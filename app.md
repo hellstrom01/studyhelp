@@ -5,7 +5,7 @@ Decades of research converge on a short list of techniques that actually produce
 1.1 The two highest-utility techniques: retrieval practice + spaced practice
 
 The most-cited review of study techniques (Dunlosky, Rawson, Marsh, Nathan & Willingham, 2013) graded ten common strategies. Only two earned "high utility" across subjects, ages, and materials: practice testing (a.k.a. retrieval practice or active recall) and distributed practice (spacing study over time). A large meta-analysis replicated this conclusion (Hattie & Donoghue, 2021; 242 studies, ~169,000 participants): distributed practice and practice testing came out on top. Typical effect sizes are large for a learning intervention — practice testing around d ≈ 0.7.
-
+ 
 
 Retrieval practice / active recall. Trying to pull information out of memory strengthens it far more than putting it back in by re-reading. Roediger & Karpicke (2006) showed that students who tested themselves retained much more a week later than students who restudied. Karpicke & Blunt (2011, Science) found retrieval practice beat elaborate concept-mapping — even when the final test was building a concept map. The act of retrieving is the mechanism, not just "engaging deeply."
 Spaced / distributed practice. Reviewing material across several sessions beats cramming the same total time into one. This goes back to Ebbinghaus's forgetting curve: memory decays predictably, and each well-timed review flattens the curve. The ideal gap is long enough to make recall effortful but short enough that you still succeed.
