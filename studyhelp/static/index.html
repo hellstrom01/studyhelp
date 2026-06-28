@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>StudyHelp</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div class="app">
+  <nav>
+    <button data-view="home" class="active">Home</button>
+    <button data-view="manage">Manage</button>
+    <button data-view="add">Add Items</button>
+  </nav>
+
+  <!-- ══════════ HOME ══════════ -->
+  <div id="view-home" class="view active">
+    <h1>Today</h1>
+    <p class="subtitle" id="home-date"></p>
+
+    <div class="stats">
+      <div class="stat">
+        <div class="number" id="stat-reviews">-</div>
+        <div class="label">Reviews due</div>
+      </div>
+      <div class="stat">
+        <div class="number" id="stat-new">-</div>
+        <div class="label">New items</div>
+      </div>
+      <div class="stat">
+        <div class="number" id="stat-calibration">-</div>
+        <div class="label">Calibration</div>
+      </div>
+    </div>
+
+    <button class="btn btn-primary" id="btn-start-session" disabled>Start Session</button>
+    <p id="home-empty" class="empty hidden">Create a subject, add topics, then add study items to get started.</p>
+  </div>
+
+  <!-- ══════════ MANAGE ══════════ -->
+  <div id="view-manage" class="view">
+    <h2>Subjects & Topics</h2>
+
+    <div id="subject-list"></div>
+
+    <div class="card">
+      <h3>New Subject</h3>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Name</label>
+          <input type="text" id="subject-name" placeholder="e.g. Calculus II">
+        </div>
+        <div class="form-group">
+          <label>Type</label>
+          <select id="subject-type">
+            <option value="MATH">Math</option>
+            <option value="CS">CS</option>
+            <option value="SCIENCE">Science</option>
+            <option value="OTHER">Other</option>
+          </select>
+        </div>
+      </div>
+      <button class="btn btn-ghost btn-sm" id="btn-add-subject">Add Subject</button>
+    </div>
+
+    <div id="topic-section" class="hidden">
+      <h3 id="topic-section-title">Topics</h3>
+      <div id="topic-list"></div>
+      <div class="card">
+        <div class="form-group">
+          <label>New Topic</label>
+          <input type="text" id="topic-name" placeholder="e.g. Integration by parts">
+        </div>
+        <button class="btn btn-ghost btn-sm" id="btn-add-topic">Add Topic</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════ ADD ITEMS ══════════ -->
+  <div id="view-add" class="view">
+    <h2>Add Study Item</h2>
+
+    <div class="form-group">
+      <label>Subject</label>
+      <select id="item-subject"><option value="">Select subject...</option></select>
+    </div>
+    <div class="form-group">
+      <label>Topic</label>
+      <select id="item-topic"><option value="">Select topic...</option></select>
+    </div>
+    <div class="form-group">
+      <label>Item Type</label>
+      <select id="item-type">
+        <option value="CONCEPT_QA">Concept Q&A</option>
+        <option value="THEOREM_TRIGGER">Theorem / Rule + Trigger</option>
+        <option value="WORKED_EXAMPLE">Worked Example</option>
+        <option value="PROBLEM_HIDDEN">Problem (hidden solution)</option>
+        <option value="CODE_FROM_SCRATCH">Code from Scratch</option>
+        <option value="CLOZE">Cloze / Fill-in</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Front (prompt / question)</label>
+      <textarea id="item-front" placeholder="What you'll be asked..."></textarea>
+    </div>
+    <div class="form-group">
+      <label>Back (answer / solution)</label>
+      <textarea id="item-back" placeholder="The answer to recall..."></textarea>
+    </div>
+    <div class="form-group" id="steps-group">
+      <label>Worked Steps (one per line, for worked examples)</label>
+      <textarea id="item-steps" placeholder="Step 1: ...&#10;Step 2: ...&#10;Step 3: ..."></textarea>
+    </div>
+    <button class="btn btn-primary" id="btn-add-item">Add Item</button>
+  </div>
+
+  <!-- ══════════ SESSION PLAYER ══════════ -->
+  <div id="view-session" class="view">
+    <div class="session-header">
+      <span class="progress-text" id="session-progress">0 / 0</span>
+      <div class="timer" id="session-timer">25:00</div>
+      <button class="btn btn-ghost btn-sm" id="btn-end-session">End</button>
+    </div>
+
+    <div id="session-item">
+      <div class="item-meta" id="session-meta"></div>
+      <div class="item-prompt" id="session-prompt"></div>
+      <div id="session-steps"></div>
+      <div id="session-answer" class="hidden"></div>
+
+      <button class="btn btn-primary" id="btn-reveal">Reveal Answer</button>
+
+      <div class="rating-buttons hidden" id="rating-buttons">
+        <button class="btn btn-again" data-rating="AGAIN">Again</button>
+        <button class="btn btn-hard" data-rating="HARD">Hard</button>
+        <button class="btn btn-good" data-rating="GOOD">Good</button>
+        <button class="btn btn-easy" data-rating="EASY">Easy</button>
+      </div>
+    </div>
+
+    <div id="session-done" class="hidden">
+      <h2>Session Complete</h2>
+      <div class="card" id="session-summary"></div>
+      <button class="btn btn-primary" id="btn-go-home">Back to Home</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════ BREAK OVERLAY ══════════ -->
+<div class="break-overlay" id="break-overlay">
+  <h2>Diffuse Break</h2>
+  <p>Step away from the screen. Walk, stretch, look out a window. Let your diffuse mode work. Not social media.</p>
+  <div class="timer break-time" id="break-timer">5:00</div>
+  <button class="btn btn-ghost" id="btn-skip-break">Resume Early</button>
+</div>
+
+<script src="/static/app.js"></script>
+</body>
+</html>
