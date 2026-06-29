@@ -1,30 +1,37 @@
 const API = '';
 let USER_ID = null;
-let currentSession = null;  // { id, queue, index, startTime, pomodoroEnd }
+let currentSession = null;
 let timerInterval = null;
 let breakInterval = null;
+let subjectsCache = [];
+let activeSubjectId = null;
+let activeTopicId = null;
+let chatMessages = [];
 
 // ── Init ─────────────────────────────────────────────
 
 async function init() {
-  // Single-user app: reuse stored user or create one
   const stored = localStorage.getItem('studyhelp_user_id');
   if (stored) {
-    USER_ID = parseInt(stored);
-  } else {
+    try {
+      await api('GET', `/users/${stored}/subjects`);
+      USER_ID = parseInt(stored);
+    } catch {
+      localStorage.removeItem('studyhelp_user_id');
+    }
+  }
+  if (!USER_ID) {
     const res = await api('POST', '/users', { display_name: 'Default User' });
     USER_ID = res.id;
     localStorage.setItem('studyhelp_user_id', USER_ID);
   }
 
-  document.getElementById('home-date').textContent =
+  document.getElementById('study-date').textContent =
     new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
 
-  setupNav();
-  setupManage();
-  setupAddItem();
-  setupSession();
-  loadHome();
+  setupEventListeners();
+  await refreshSidebar();
+  showView('study');
 }
 
 // ── API helper ───────────────────────────────────────
@@ -50,179 +57,250 @@ function toast(msg) {
 
 // ── Navigation ───────────────────────────────────────
 
-function setupNav() {
-  document.querySelectorAll('nav button').forEach(btn => {
-    btn.addEventListener('click', () => showView(btn.dataset.view));
+function setupEventListeners() {
+  // Sidebar nav
+  document.querySelector('.nav-item[data-view="study"]')
+    .addEventListener('click', () => showView('study'));
+  document.querySelector('.nav-item[data-view="add-course"]')
+    .addEventListener('click', () => showView('add-course'));
+
+  // Add course
+  document.getElementById('btn-add-subject').addEventListener('click', addSubject);
+
+  // Course view
+  document.getElementById('btn-add-topic').addEventListener('click', addTopic);
+  document.getElementById('btn-study-course').addEventListener('click', () => {
+    if (activeSubjectId) startChatSession(activeSubjectId, null);
+  });
+
+  // Topic view
+  document.getElementById('btn-back-to-course').addEventListener('click', () => {
+    if (activeSubjectId) showCourse(activeSubjectId);
+  });
+  document.getElementById('btn-add-item').addEventListener('click', addItem);
+  document.getElementById('item-type').addEventListener('change', (e) => {
+    document.getElementById('steps-group').classList.toggle('hidden', e.target.value !== 'WORKED_EXAMPLE');
+  });
+
+  // Session (chat)
+  document.getElementById('btn-end-session').addEventListener('click', endSessionEarly);
+  document.getElementById('btn-go-home').addEventListener('click', () => showView('study'));
+  document.getElementById('btn-skip-break').addEventListener('click', endBreak);
+  document.getElementById('btn-send').addEventListener('click', sendMessage);
+
+  // Send on Enter (Shift+Enter for newline)
+  document.getElementById('chat-input').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
+    }
   });
 }
 
 function showView(name) {
   document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
-  document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
-
   document.getElementById(`view-${name}`).classList.add('active');
-  const navBtn = document.querySelector(`nav button[data-view="${name}"]`);
+
+  const sidebar = document.getElementById('sidebar');
+  const main = document.getElementById('main');
+
+  if (name === 'session') {
+    sidebar.classList.add('hidden');
+    main.classList.add('full');
+  } else {
+    sidebar.classList.remove('hidden');
+    main.classList.remove('full');
+  }
+
+  // Highlight sidebar
+  document.querySelectorAll('.nav-item, .nav-subject').forEach(el => el.classList.remove('active'));
+  const navBtn = document.querySelector(`.nav-item[data-view="${name}"]`);
   if (navBtn) navBtn.classList.add('active');
 
-  document.querySelector('nav').classList.remove('hidden');
-
-  if (name === 'home') loadHome();
-  if (name === 'manage') loadSubjects();
-  if (name === 'add') loadItemForm();
+  if (name === 'study') loadStudy();
+  if (name === 'add-course') document.getElementById('subject-name').focus();
 }
 
-// ── HOME ─────────────────────────────────────────────
+// ── Sidebar ──────────────────────────────────────────
 
-async function loadHome() {
+async function refreshSidebar() {
   try {
-    const counts = await api('GET', `/users/${USER_ID}/sessions/due`);
-
-    document.getElementById('stat-reviews').textContent = counts.reviews_due;
-    document.getElementById('stat-new').textContent = counts.new_available;
-    document.getElementById('stat-calibration').textContent = '-';
-
-    const total = counts.reviews_due + counts.new_available;
-    const btn = document.getElementById('btn-start-session');
-    const empty = document.getElementById('home-empty');
-
-    if (total > 0) {
-      btn.disabled = false;
-      btn.textContent = `Start Session (${total} items)`;
-      empty.classList.add('hidden');
-    } else {
-      btn.disabled = true;
-      btn.textContent = 'No items to study';
-      empty.classList.remove('hidden');
-    }
-    currentSession = null;
-  } catch (e) {
-    document.getElementById('stat-reviews').textContent = '0';
-    document.getElementById('stat-new').textContent = '0';
-    document.getElementById('home-empty').classList.remove('hidden');
+    subjectsCache = await api('GET', `/users/${USER_ID}/subjects`);
+  } catch {
+    subjectsCache = [];
   }
-}
 
-// ── MANAGE ───────────────────────────────────────────
-
-let selectedSubjectId = null;
-
-function setupManage() {
-  document.getElementById('btn-add-subject').addEventListener('click', addSubject);
-  document.getElementById('btn-add-topic').addEventListener('click', addTopic);
-}
-
-async function loadSubjects() {
-  const subjects = await api('GET', `/users/${USER_ID}/subjects`);
-  const list = document.getElementById('subject-list');
-
-  if (subjects.length === 0) {
-    list.innerHTML = '<p class="empty">No subjects yet. Create one below.</p>';
-    document.getElementById('topic-section').classList.add('hidden');
+  const container = document.getElementById('sidebar-subjects');
+  if (subjectsCache.length === 0) {
+    container.innerHTML = '<div class="nav-empty">No courses yet</div>';
     return;
   }
 
-  list.innerHTML = subjects.map(s => `
-    <div class="list-item" data-id="${s.id}">
-      <span class="name">${esc(s.name)}</span>
-      <span class="detail">${s.type}</span>
-    </div>
+  container.innerHTML = subjectsCache.map(s => `
+    <button class="nav-subject" data-subject-id="${s.id}">
+      <span class="dot" style="background: ${esc(s.color)}"></span>
+      <span class="subject-name">${esc(s.name)}</span>
+    </button>
   `).join('');
 
-  list.querySelectorAll('.list-item').forEach(el => {
-    el.addEventListener('click', () => selectSubject(el.dataset.id, subjects));
+  container.querySelectorAll('.nav-subject').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const id = parseInt(btn.dataset.subjectId);
+      showCourse(id);
+    });
   });
-
-  if (selectedSubjectId) {
-    selectSubject(selectedSubjectId, subjects);
-  }
 }
 
-async function selectSubject(id, subjects) {
-  selectedSubjectId = parseInt(id);
-  const subj = subjects.find(s => s.id === selectedSubjectId);
+// ── Study view ───────────────────────────────────────
+
+async function loadStudy() {
+  await refreshSidebar();
+
+  try {
+    const counts = await api('GET', `/users/${USER_ID}/sessions/due`);
+    document.getElementById('stat-reviews').textContent = counts.reviews_due;
+    document.getElementById('stat-new').textContent = counts.new_available;
+    document.getElementById('stat-calibration').textContent = '-';
+  } catch {
+    document.getElementById('stat-reviews').textContent = '0';
+    document.getElementById('stat-new').textContent = '0';
+  }
+
+  const empty = document.getElementById('study-empty');
+
+  // Show per-subject cards
+  const container = document.getElementById('study-subjects');
+  if (subjectsCache.length === 0) {
+    container.innerHTML = '';
+    empty.classList.remove('hidden');
+    return;
+  }
+
+  empty.classList.add('hidden');
+  container.innerHTML = '<h3 style="margin-bottom: 12px; margin-top: 8px;">Your Courses</h3>' +
+    subjectsCache.map(s => `
+      <div class="study-subject-card" data-subject-id="${s.id}">
+        <div class="study-subject-info">
+          <span class="dot" style="background: ${esc(s.color)}"></span>
+          <span class="name">${esc(s.name)}</span>
+        </div>
+        <div class="counts">
+          <span>${esc(s.type)}</span>
+        </div>
+      </div>
+    `).join('');
+
+  container.querySelectorAll('.study-subject-card').forEach(card => {
+    card.addEventListener('click', () => showCourse(parseInt(card.dataset.subjectId)));
+  });
+}
+
+// ── Course view ──────────────────────────────────────
+
+async function showCourse(subjectId) {
+  activeSubjectId = subjectId;
+  const subj = subjectsCache.find(s => s.id === subjectId);
   if (!subj) return;
 
-  document.getElementById('topic-section').classList.remove('hidden');
-  document.getElementById('topic-section-title').textContent = `Topics in ${subj.name}`;
+  showView('course');
 
-  document.querySelectorAll('#subject-list .list-item').forEach(el => {
-    el.style.borderColor = parseInt(el.dataset.id) === selectedSubjectId ? 'var(--accent)' : '';
+  // Highlight in sidebar
+  document.querySelectorAll('.nav-subject').forEach(el => {
+    el.classList.toggle('active', parseInt(el.dataset.subjectId) === subjectId);
   });
 
-  const topics = await api('GET', `/users/${USER_ID}/subjects/${id}/topics`);
-  const tl = document.getElementById('topic-list');
+  document.getElementById('course-title').textContent = subj.name;
+  document.getElementById('course-type').textContent = subj.type;
+
+  const topics = await api('GET', `/users/${USER_ID}/subjects/${subjectId}/topics`);
+  const container = document.getElementById('course-topics');
 
   if (topics.length === 0) {
-    tl.innerHTML = '<p class="empty">No topics yet.</p>';
+    container.innerHTML = '<p class="empty">No topics yet. Add one below.</p>';
   } else {
-    tl.innerHTML = topics.map(t => `
-      <div class="list-item">
-        <span class="name">${esc(t.name)}</span>
+    const topicCards = await Promise.all(topics.map(async (t) => {
+      let items = [];
+      try { items = await api('GET', `/topics/${t.id}/items`); } catch {}
+      return `
+        <div class="topic-card" data-topic-id="${t.id}">
+          <span class="name">${esc(t.name)}</span>
+          <span class="detail">${items.length} item${items.length !== 1 ? 's' : ''}</span>
+        </div>
+      `;
+    }));
+    container.innerHTML = topicCards.join('');
+
+    container.querySelectorAll('.topic-card').forEach(card => {
+      card.addEventListener('click', () => showTopic(parseInt(card.dataset.topicId)));
+    });
+  }
+
+  document.getElementById('topic-name').value = '';
+}
+
+// ── Topic view (add items) ───────────────────────────
+
+async function showTopic(topicId) {
+  activeTopicId = topicId;
+  showView('topic');
+
+  const topics = await api('GET', `/users/${USER_ID}/subjects/${activeSubjectId}/topics`);
+  const topic = topics.find(t => t.id === topicId);
+  document.getElementById('topic-title').textContent = topic ? topic.name : 'Topic';
+
+  await refreshTopicItems();
+
+  document.getElementById('item-front').value = '';
+  document.getElementById('item-back').value = '';
+  document.getElementById('item-steps').value = '';
+  document.getElementById('item-type').value = 'CONCEPT_QA';
+  document.getElementById('steps-group').classList.add('hidden');
+}
+
+async function refreshTopicItems() {
+  const items = await api('GET', `/topics/${activeTopicId}/items`);
+  document.getElementById('topic-item-count').textContent = `${items.length} item${items.length !== 1 ? 's' : ''}`;
+
+  const container = document.getElementById('topic-items-list');
+  if (items.length === 0) {
+    container.innerHTML = '<p class="empty">No items yet. Add your first one below.</p>';
+  } else {
+    container.innerHTML = items.map(item => `
+      <div class="item-card">
+        <div class="item-card-type">${formatType(item.type)}</div>
+        <div class="item-card-front">${esc(item.front)}</div>
       </div>
     `).join('');
   }
 }
+
+// ── Actions ──────────────────────────────────────────
 
 async function addSubject() {
   const name = document.getElementById('subject-name').value.trim();
   const type = document.getElementById('subject-type').value;
   if (!name) return;
 
-  await api('POST', `/users/${USER_ID}/subjects`, { name, type });
+  const subj = await api('POST', `/users/${USER_ID}/subjects`, { name, type });
   document.getElementById('subject-name').value = '';
-  toast('Subject created');
-  loadSubjects();
+  toast('Course created');
+  await refreshSidebar();
+  showCourse(subj.id);
 }
 
 async function addTopic() {
-  if (!selectedSubjectId) return;
+  if (!activeSubjectId) return;
   const name = document.getElementById('topic-name').value.trim();
   if (!name) return;
 
-  await api('POST', `/users/${USER_ID}/subjects/${selectedSubjectId}/topics`, { name });
+  await api('POST', `/users/${USER_ID}/subjects/${activeSubjectId}/topics`, { name });
   document.getElementById('topic-name').value = '';
-  toast('Topic created');
-  loadSubjects();
-  loadItemForm();
-}
-
-// ── ADD ITEMS ────────────────────────────────────────
-
-function setupAddItem() {
-  const typeSelect = document.getElementById('item-type');
-  typeSelect.addEventListener('change', () => {
-    document.getElementById('steps-group').classList.toggle('hidden', typeSelect.value !== 'WORKED_EXAMPLE');
-  });
-  // Initial state
-  document.getElementById('steps-group').classList.add('hidden');
-
-  document.getElementById('item-subject').addEventListener('change', loadTopicsForItem);
-  document.getElementById('btn-add-item').addEventListener('click', addItem);
-}
-
-async function loadItemForm() {
-  const subjects = await api('GET', `/users/${USER_ID}/subjects`);
-  const sel = document.getElementById('item-subject');
-  sel.innerHTML = '<option value="">Select subject...</option>' +
-    subjects.map(s => `<option value="${s.id}">${esc(s.name)}</option>`).join('');
-  document.getElementById('item-topic').innerHTML = '<option value="">Select topic...</option>';
-}
-
-async function loadTopicsForItem() {
-  const subjId = document.getElementById('item-subject').value;
-  const sel = document.getElementById('item-topic');
-  if (!subjId) {
-    sel.innerHTML = '<option value="">Select topic...</option>';
-    return;
-  }
-  const topics = await api('GET', `/users/${USER_ID}/subjects/${subjId}/topics`);
-  sel.innerHTML = '<option value="">Select topic...</option>' +
-    topics.map(t => `<option value="${t.id}">${esc(t.name)}</option>`).join('');
+  toast('Topic added');
+  showCourse(activeSubjectId);
 }
 
 async function addItem() {
-  const topicId = document.getElementById('item-topic').value;
-  if (!topicId) { toast('Select a topic first'); return; }
+  if (!activeTopicId) return;
 
   const type = document.getElementById('item-type').value;
   const front = document.getElementById('item-front').value.trim();
@@ -238,64 +316,151 @@ async function addItem() {
     }
   }
 
-  await api('POST', `/topics/${topicId}/items`, body);
+  await api('POST', `/topics/${activeTopicId}/items`, body);
   document.getElementById('item-front').value = '';
   document.getElementById('item-back').value = '';
   document.getElementById('item-steps').value = '';
   toast('Item added');
+  await refreshTopicItems();
 }
 
-// ── SESSION PLAYER ───────────────────────────────────
+// ── CHAT SESSION ─────────────────────────────────────
 
-let itemShownAt = 0;
+async function startChatSession(subjectId, topicId) {
+  const subj = subjectsCache.find(s => s.id === subjectId);
+  if (!subj) return;
 
-function setupSession() {
-  document.getElementById('btn-start-session').addEventListener('click', startSession);
-  document.getElementById('btn-reveal').addEventListener('click', revealAnswer);
-  document.getElementById('btn-end-session').addEventListener('click', endSessionEarly);
-  document.getElementById('btn-go-home').addEventListener('click', () => showView('home'));
-  document.getElementById('btn-skip-break').addEventListener('click', endBreak);
-
-  document.querySelectorAll('#rating-buttons .btn').forEach(btn => {
-    btn.addEventListener('click', () => submitRating(btn.dataset.rating));
-  });
-}
-
-async function startSession() {
-  const btn = document.getElementById('btn-start-session');
-  btn.disabled = true;
-  btn.textContent = 'Loading...';
-
+  // Create a session on the backend
+  let sessionId = null;
   try {
     const queue = await api('POST', `/users/${USER_ID}/sessions`);
-    if (queue.items.length === 0) {
-      toast('No items to study');
-      btn.disabled = false;
-      btn.textContent = 'No items to study';
-      return;
-    }
+    sessionId = queue.session_id;
+  } catch {
+    // Session creation is optional — chat still works without it
+  }
 
-    currentSession = {
-      id: queue.session_id,
-      queue: queue.items,
-      index: 0,
-      startTime: Date.now(),
-      pomodoroEnd: Date.now() + 25 * 60 * 1000,
-      pomodorosCompleted: 0,
-      reviewCount: 0,
-      correctCount: 0,
-      totalMs: 0,
-    };
+  currentSession = {
+    subjectId,
+    topicId,
+    sessionId,
+    startTime: Date.now(),
+    pomodoroEnd: Date.now() + 25 * 60 * 1000,
+    pomodorosCompleted: 0,
+  };
 
-    showView('session');
-    document.querySelector('nav').classList.add('hidden');
-    startTimer();
-    showCurrentItem();
-  } catch (e) {
-    toast('Failed to start session');
-    btn.disabled = false;
+  chatMessages = [];
+
+  // Set up session UI
+  const topicLabel = topicId
+    ? (await getTopicName(subjectId, topicId))
+    : null;
+  document.getElementById('session-topic').textContent =
+    subj.name + (topicLabel ? ` > ${topicLabel}` : '');
+  document.getElementById('chat-messages').innerHTML = '';
+  document.getElementById('chat-input').value = '';
+  document.getElementById('session-done').classList.add('hidden');
+  document.getElementById('chat-input').disabled = false;
+  document.getElementById('btn-send').disabled = false;
+
+  showView('session');
+  startTimer();
+
+  // Send initial message to get the tutor started
+  await sendInitialMessage();
+}
+
+async function getTopicName(subjectId, topicId) {
+  try {
+    const topics = await api('GET', `/users/${USER_ID}/subjects/${subjectId}/topics`);
+    const t = topics.find(t => t.id === topicId);
+    return t ? t.name : null;
+  } catch {
+    return null;
   }
 }
+
+async function sendInitialMessage() {
+  addChatBubble('thinking', 'Preparing your study session...');
+
+  try {
+    const res = await api('POST', `/users/${USER_ID}/chat`, {
+      subject_id: currentSession.subjectId,
+      topic_id: currentSession.topicId,
+      session_id: currentSession.sessionId,
+      messages: [],
+    });
+
+    removeBubble('thinking');
+    chatMessages.push({ role: 'assistant', content: res.reply });
+    addChatBubble('tutor', res.reply);
+    scrollChat();
+  } catch (e) {
+    removeBubble('thinking');
+    addChatBubble('tutor', 'Failed to connect to the tutor. Check your API key and try again.');
+  }
+}
+
+async function sendMessage() {
+  const input = document.getElementById('chat-input');
+  const text = input.value.trim();
+  if (!text) return;
+  if (!currentSession) return;
+
+  input.value = '';
+  input.style.height = 'auto';
+
+  // Add user message
+  chatMessages.push({ role: 'user', content: text });
+  addChatBubble('user', text);
+  scrollChat();
+
+  // Disable input while waiting
+  input.disabled = true;
+  document.getElementById('btn-send').disabled = true;
+  addChatBubble('thinking', 'Thinking...');
+
+  try {
+    const res = await api('POST', `/users/${USER_ID}/chat`, {
+      subject_id: currentSession.subjectId,
+      topic_id: currentSession.topicId,
+      session_id: currentSession.sessionId,
+      messages: chatMessages,
+    });
+
+    removeBubble('thinking');
+    chatMessages.push({ role: 'assistant', content: res.reply });
+    addChatBubble('tutor', res.reply);
+    scrollChat();
+  } catch (e) {
+    removeBubble('thinking');
+    addChatBubble('tutor', 'Something went wrong. Try sending your message again.');
+  }
+
+  input.disabled = false;
+  document.getElementById('btn-send').disabled = false;
+  input.focus();
+}
+
+function addChatBubble(type, text) {
+  const container = document.getElementById('chat-messages');
+  const el = document.createElement('div');
+  el.className = `chat-msg ${type}`;
+  el.textContent = text;
+  if (type === 'thinking') el.dataset.thinking = '1';
+  container.appendChild(el);
+}
+
+function removeBubble(type) {
+  const el = document.querySelector(`.chat-msg[data-${type}]`);
+  if (el) el.remove();
+}
+
+function scrollChat() {
+  const container = document.getElementById('chat-container');
+  container.scrollTop = container.scrollHeight;
+}
+
+// ── Timer & Breaks ───────────────────────────────────
 
 function startTimer() {
   clearInterval(timerInterval);
@@ -321,10 +486,9 @@ function updateTimer() {
 }
 
 function startBreak() {
-  const breakMin = 5;
   const overlay = document.getElementById('break-overlay');
   overlay.classList.add('active');
-  let breakEnd = Date.now() + breakMin * 60 * 1000;
+  let breakEnd = Date.now() + 5 * 60 * 1000;
 
   clearInterval(breakInterval);
   breakInterval = setInterval(() => {
@@ -340,133 +504,38 @@ function startBreak() {
 function endBreak() {
   clearInterval(breakInterval);
   document.getElementById('break-overlay').classList.remove('active');
-
   if (!currentSession) return;
   currentSession.pomodorosCompleted = (currentSession.pomodorosCompleted || 0) + 1;
-  // Start a new pomodoro
   currentSession.pomodoroEnd = Date.now() + 25 * 60 * 1000;
   startTimer();
 }
 
-function showCurrentItem() {
-  const s = currentSession;
-  if (s.index >= s.queue.length) {
-    finishSession();
-    return;
-  }
-
-  const item = s.queue[s.index];
-  itemShownAt = Date.now();
-
-  // Progress
-  document.getElementById('session-progress').textContent =
-    `${s.index + 1} / ${s.queue.length}`;
-
-  // Meta tags
-  const meta = document.getElementById('session-meta');
-  meta.innerHTML = `
-    <span class="tag">${esc(item.subject_name)}</span>
-    <span class="tag">${esc(item.topic_name)}</span>
-    <span class="tag">${formatType(item.type)}</span>
-    ${item.is_new ? '<span class="tag new">New</span>' : ''}
-  `;
-
-  // Prompt
-  document.getElementById('session-prompt').textContent = item.front;
-
-  // Worked steps (faded)
-  const stepsEl = document.getElementById('session-steps');
-  if (item.worked_steps && item.worked_steps.length > 0) {
-    const reveal = item.steps_to_reveal ?? item.worked_steps.length;
-    stepsEl.innerHTML = item.worked_steps.map((step, i) => {
-      if (i < reveal) {
-        return `<div class="worked-step">${esc(step)}</div>`;
-      }
-      return `<div class="worked-step hidden">Step ${i + 1}: Try to recall this step</div>`;
-    }).join('');
-  } else {
-    stepsEl.innerHTML = '';
-  }
-
-  // Reset answer/buttons
-  document.getElementById('session-answer').classList.add('hidden');
-  document.getElementById('session-answer').innerHTML = '';
-  document.getElementById('btn-reveal').classList.remove('hidden');
-  document.getElementById('rating-buttons').classList.add('hidden');
-  document.getElementById('session-item').classList.remove('hidden');
-  document.getElementById('session-done').classList.add('hidden');
-}
-
-async function revealAnswer() {
-  const s = currentSession;
-  const item = s.queue[s.index];
-
-  const data = await api('GET', `/users/${USER_ID}/sessions/${s.id}/reveal/${item.item_id}`);
-
-  const answerEl = document.getElementById('session-answer');
-  let html = `<div class="item-answer">${esc(data.back)}</div>`;
-
-  // Show all worked steps on reveal
-  if (data.worked_steps && data.worked_steps.length > 0) {
-    html += data.worked_steps.map((step, i) =>
-      `<div class="worked-step">${esc(step)}</div>`
-    ).join('');
-  }
-  answerEl.innerHTML = html;
-  answerEl.classList.remove('hidden');
-
-  document.getElementById('btn-reveal').classList.add('hidden');
-  document.getElementById('rating-buttons').classList.remove('hidden');
-}
-
-async function submitRating(rating) {
-  const s = currentSession;
-  const item = s.queue[s.index];
-  const responseMs = Date.now() - itemShownAt;
-
-  const wasCorrect = rating !== 'AGAIN';
-
-  await api('POST', `/users/${USER_ID}/sessions/${s.id}/reviews/${item.item_id}`, {
-    rating,
-    was_correct: wasCorrect,
-    response_ms: responseMs,
-  });
-
-  s.reviewCount++;
-  if (wasCorrect) s.correctCount++;
-  s.totalMs += responseMs;
-
-  s.index++;
-  showCurrentItem();
-}
-
-async function finishSession() {
-  clearInterval(timerInterval);
-  const s = currentSession;
-
-  const result = await api('POST', `/users/${USER_ID}/sessions/${s.id}/end`);
-
-  document.getElementById('session-item').classList.add('hidden');
-  document.getElementById('session-done').classList.remove('hidden');
-
-  const avgTime = s.reviewCount > 0 ? Math.round(s.totalMs / s.reviewCount / 1000) : 0;
-  const accuracy = s.reviewCount > 0 ? Math.round(s.correctCount / s.reviewCount * 100) : 0;
-  const calibration = result.avg_calibration_error != null
-    ? (result.avg_calibration_error * 100).toFixed(1) + '%'
-    : '-';
-
-  document.getElementById('session-summary').innerHTML = `
-    <div class="summary-stat"><span>Items reviewed</span><span class="val">${result.items_seen}</span></div>
-    <div class="summary-stat"><span>Accuracy</span><span class="val">${accuracy}%</span></div>
-    <div class="summary-stat"><span>Avg response time</span><span class="val">${avgTime}s</span></div>
-    <div class="summary-stat"><span>Calibration error</span><span class="val">${calibration}</span></div>
-    <div class="summary-stat"><span>Pomodoros</span><span class="val">${s.pomodorosCompleted || 0}</span></div>
-  `;
-}
-
 async function endSessionEarly() {
   if (!currentSession) return;
-  await finishSession();
+  clearInterval(timerInterval);
+
+  // End session on backend
+  if (currentSession.sessionId) {
+    try {
+      await api('POST', `/users/${USER_ID}/sessions/${currentSession.sessionId}/end`);
+    } catch {}
+  }
+
+  const elapsed = Math.round((Date.now() - currentSession.startTime) / 60000);
+  const msgCount = chatMessages.filter(m => m.role === 'user').length;
+
+  // Show summary
+  document.getElementById('chat-input').disabled = true;
+  document.getElementById('btn-send').disabled = true;
+  document.getElementById('session-done').classList.remove('hidden');
+  document.getElementById('session-summary').innerHTML = `
+    <div class="summary-stat"><span>Time studied</span><span class="val">${elapsed} min</span></div>
+    <div class="summary-stat"><span>Messages exchanged</span><span class="val">${chatMessages.length}</span></div>
+    <div class="summary-stat"><span>Your responses</span><span class="val">${msgCount}</span></div>
+    <div class="summary-stat"><span>Pomodoros</span><span class="val">${currentSession.pomodorosCompleted || 0}</span></div>
+  `;
+
+  currentSession = null;
 }
 
 // ── Helpers ──────────────────────────────────────────
@@ -478,7 +547,7 @@ function esc(str) {
 }
 
 function formatType(type) {
-  const map = {
+  return {
     CONCEPT_QA: 'Concept Q&A',
     THEOREM_TRIGGER: 'Theorem/Rule',
     WORKED_EXAMPLE: 'Worked Example',
@@ -486,8 +555,7 @@ function formatType(type) {
     CODE_FROM_SCRATCH: 'Code',
     FEYNMAN_PROMPT: 'Explain',
     CLOZE: 'Cloze',
-  };
-  return map[type] || type;
+  }[type] || type;
 }
 
 // ── Boot ─────────────────────────────────────────────

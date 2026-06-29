@@ -7,144 +7,177 @@
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-<div class="app">
-  <nav>
-    <button data-view="home" class="active">Home</button>
-    <button data-view="manage">Manage</button>
-    <button data-view="add">Add Items</button>
-  </nav>
 
-  <!-- ══════════ HOME ══════════ -->
-  <div id="view-home" class="view active">
-    <h1>Today</h1>
-    <p class="subtitle" id="home-date"></p>
+<div class="layout">
+  <!-- ══════════ SIDEBAR ══════════ -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-header">
+      <h1 class="logo">StudyHelp</h1>
+    </div>
 
-    <div class="stats">
-      <div class="stat">
-        <div class="number" id="stat-reviews">-</div>
-        <div class="label">Reviews due</div>
+    <nav class="sidebar-nav">
+      <button class="nav-item active" data-view="study">
+        <span class="nav-icon">&#9654;</span> Study
+      </button>
+
+      <div class="nav-section-label">Your Courses</div>
+      <div id="sidebar-subjects">
+        <div class="nav-empty">No courses yet</div>
       </div>
-      <div class="stat">
-        <div class="number" id="stat-new">-</div>
-        <div class="label">New items</div>
+
+      <button class="nav-item" data-view="add-course">
+        <span class="nav-icon">+</span> New Course
+      </button>
+    </nav>
+  </aside>
+
+  <!-- ══════════ MAIN CONTENT ══════════ -->
+  <main class="main" id="main">
+
+    <!-- ── Study (default) ── -->
+    <div id="view-study" class="view active">
+      <div class="view-header">
+        <h2>Study</h2>
+        <p class="subtitle" id="study-date"></p>
       </div>
-      <div class="stat">
-        <div class="number" id="stat-calibration">-</div>
-        <div class="label">Calibration</div>
+
+      <div class="stats">
+        <div class="stat">
+          <div class="number" id="stat-reviews">-</div>
+          <div class="label">Reviews due</div>
+        </div>
+        <div class="stat">
+          <div class="number" id="stat-new">-</div>
+          <div class="label">New items</div>
+        </div>
+        <div class="stat">
+          <div class="number" id="stat-calibration">-</div>
+          <div class="label">Calibration</div>
+        </div>
+      </div>
+
+      <div id="study-subjects" class="study-subjects"></div>
+
+      <p id="study-empty" class="empty hidden">
+        Add a course to get started. Click "New Course" in the sidebar.
+      </p>
+
+      <p class="subtitle" style="margin-top: 16px;">Click a course to start a study session with your AI tutor.</p>
+    </div>
+
+    <!-- ── Course detail ── -->
+    <div id="view-course" class="view">
+      <div class="view-header">
+        <h2 id="course-title">Course</h2>
+        <p class="subtitle" id="course-type"></p>
+      </div>
+
+      <button class="btn btn-primary" id="btn-study-course" style="margin-bottom: 20px;">
+        Study this course
+      </button>
+
+      <h3 style="margin-bottom: 12px;">Topics</h3>
+      <div id="course-topics"></div>
+
+      <div class="card">
+        <h3>Add Topic</h3>
+        <div class="inline-form">
+          <input type="text" id="topic-name" placeholder="e.g. Integration by parts">
+          <button class="btn btn-ghost btn-sm" id="btn-add-topic">Add</button>
+        </div>
       </div>
     </div>
 
-    <button class="btn btn-primary" id="btn-start-session" disabled>Start Session</button>
-    <p id="home-empty" class="empty hidden">Create a subject, add topics, then add study items to get started.</p>
-  </div>
+    <!-- ── Topic detail (add items) ── -->
+    <div id="view-topic" class="view">
+      <div class="view-header">
+        <button class="btn-back" id="btn-back-to-course">&larr; Back</button>
+        <h2 id="topic-title">Topic</h2>
+        <p class="subtitle" id="topic-item-count"></p>
+      </div>
 
-  <!-- ══════════ MANAGE ══════════ -->
-  <div id="view-manage" class="view">
-    <h2>Subjects & Topics</h2>
+      <div id="topic-items-list"></div>
 
-    <div id="subject-list"></div>
-
-    <div class="card">
-      <h3>New Subject</h3>
-      <div class="form-row">
+      <div class="card">
+        <h3>Add Study Item</h3>
         <div class="form-group">
-          <label>Name</label>
-          <input type="text" id="subject-name" placeholder="e.g. Calculus II">
+          <label>Item Type</label>
+          <select id="item-type">
+            <option value="CONCEPT_QA">Concept Q&A</option>
+            <option value="THEOREM_TRIGGER">Theorem / Rule + Trigger</option>
+            <option value="WORKED_EXAMPLE">Worked Example</option>
+            <option value="PROBLEM_HIDDEN">Problem (hidden solution)</option>
+            <option value="CODE_FROM_SCRATCH">Code from Scratch</option>
+            <option value="CLOZE">Cloze / Fill-in</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Front (prompt / question)</label>
+          <textarea id="item-front" placeholder="What you'll be asked..." rows="3"></textarea>
+        </div>
+        <div class="form-group">
+          <label>Back (answer / solution)</label>
+          <textarea id="item-back" placeholder="The answer to recall..." rows="3"></textarea>
+        </div>
+        <div class="form-group hidden" id="steps-group">
+          <label>Worked Steps (one per line)</label>
+          <textarea id="item-steps" placeholder="Step 1: ...&#10;Step 2: ...&#10;Step 3: ..." rows="4"></textarea>
+        </div>
+        <button class="btn btn-primary" id="btn-add-item">Add Item</button>
+      </div>
+    </div>
+
+    <!-- ── New Course ── -->
+    <div id="view-add-course" class="view">
+      <div class="view-header">
+        <h2>New Course</h2>
+        <p class="subtitle">Add a subject you're studying</p>
+      </div>
+
+      <div class="card">
+        <div class="form-group">
+          <label>Course Name</label>
+          <input type="text" id="subject-name" placeholder="e.g. Calculus II, Algorithms, Physics 101">
         </div>
         <div class="form-group">
           <label>Type</label>
           <select id="subject-type">
             <option value="MATH">Math</option>
-            <option value="CS">CS</option>
+            <option value="CS">Computer Science</option>
             <option value="SCIENCE">Science</option>
             <option value="OTHER">Other</option>
           </select>
         </div>
-      </div>
-      <button class="btn btn-ghost btn-sm" id="btn-add-subject">Add Subject</button>
-    </div>
-
-    <div id="topic-section" class="hidden">
-      <h3 id="topic-section-title">Topics</h3>
-      <div id="topic-list"></div>
-      <div class="card">
-        <div class="form-group">
-          <label>New Topic</label>
-          <input type="text" id="topic-name" placeholder="e.g. Integration by parts">
-        </div>
-        <button class="btn btn-ghost btn-sm" id="btn-add-topic">Add Topic</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- ══════════ ADD ITEMS ══════════ -->
-  <div id="view-add" class="view">
-    <h2>Add Study Item</h2>
-
-    <div class="form-group">
-      <label>Subject</label>
-      <select id="item-subject"><option value="">Select subject...</option></select>
-    </div>
-    <div class="form-group">
-      <label>Topic</label>
-      <select id="item-topic"><option value="">Select topic...</option></select>
-    </div>
-    <div class="form-group">
-      <label>Item Type</label>
-      <select id="item-type">
-        <option value="CONCEPT_QA">Concept Q&A</option>
-        <option value="THEOREM_TRIGGER">Theorem / Rule + Trigger</option>
-        <option value="WORKED_EXAMPLE">Worked Example</option>
-        <option value="PROBLEM_HIDDEN">Problem (hidden solution)</option>
-        <option value="CODE_FROM_SCRATCH">Code from Scratch</option>
-        <option value="CLOZE">Cloze / Fill-in</option>
-      </select>
-    </div>
-    <div class="form-group">
-      <label>Front (prompt / question)</label>
-      <textarea id="item-front" placeholder="What you'll be asked..."></textarea>
-    </div>
-    <div class="form-group">
-      <label>Back (answer / solution)</label>
-      <textarea id="item-back" placeholder="The answer to recall..."></textarea>
-    </div>
-    <div class="form-group" id="steps-group">
-      <label>Worked Steps (one per line, for worked examples)</label>
-      <textarea id="item-steps" placeholder="Step 1: ...&#10;Step 2: ...&#10;Step 3: ..."></textarea>
-    </div>
-    <button class="btn btn-primary" id="btn-add-item">Add Item</button>
-  </div>
-
-  <!-- ══════════ SESSION PLAYER ══════════ -->
-  <div id="view-session" class="view">
-    <div class="session-header">
-      <span class="progress-text" id="session-progress">0 / 0</span>
-      <div class="timer" id="session-timer">25:00</div>
-      <button class="btn btn-ghost btn-sm" id="btn-end-session">End</button>
-    </div>
-
-    <div id="session-item">
-      <div class="item-meta" id="session-meta"></div>
-      <div class="item-prompt" id="session-prompt"></div>
-      <div id="session-steps"></div>
-      <div id="session-answer" class="hidden"></div>
-
-      <button class="btn btn-primary" id="btn-reveal">Reveal Answer</button>
-
-      <div class="rating-buttons hidden" id="rating-buttons">
-        <button class="btn btn-again" data-rating="AGAIN">Again</button>
-        <button class="btn btn-hard" data-rating="HARD">Hard</button>
-        <button class="btn btn-good" data-rating="GOOD">Good</button>
-        <button class="btn btn-easy" data-rating="EASY">Easy</button>
+        <button class="btn btn-primary" id="btn-add-subject">Create Course</button>
       </div>
     </div>
 
-    <div id="session-done" class="hidden">
-      <h2>Session Complete</h2>
-      <div class="card" id="session-summary"></div>
-      <button class="btn btn-primary" id="btn-go-home">Back to Home</button>
+    <!-- ── Study session (chat-based, hides sidebar) ── -->
+    <div id="view-session" class="view">
+      <div class="session-header">
+        <span class="session-topic" id="session-topic"></span>
+        <div class="timer" id="session-timer">25:00</div>
+        <button class="btn btn-ghost btn-sm" id="btn-end-session">End Session</button>
+      </div>
+
+      <div class="chat-container" id="chat-container">
+        <div class="chat-messages" id="chat-messages"></div>
+      </div>
+
+      <div class="chat-input-area">
+        <textarea class="chat-input" id="chat-input"
+          placeholder="Type your answer..." rows="2"></textarea>
+        <button class="btn btn-primary chat-send" id="btn-send">Send</button>
+      </div>
+
+      <div id="session-done" class="hidden">
+        <h2>Session Complete</h2>
+        <div class="card" id="session-summary"></div>
+        <button class="btn btn-primary" id="btn-go-home">Back to Study</button>
+      </div>
     </div>
-  </div>
+
+  </main>
 </div>
 
 <!-- ══════════ BREAK OVERLAY ══════════ -->
