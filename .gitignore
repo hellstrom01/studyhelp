@@ -37,5 +37,8 @@ Thumbs.db
 
 # Claude Code
 .claude/
+.agents/
 CLAUDE.md
 PROGRESS.md
+docs/agents/
+skills-lock.json
