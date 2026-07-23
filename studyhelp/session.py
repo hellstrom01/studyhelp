@@ -16,6 +16,7 @@ from .models import (
     ItemType,
     Rating,
     Review,
+    ReviewSource,
     StudySession,
     Topic,
     User,
@@ -165,8 +166,14 @@ def submit_review(
     rating: Rating,
     was_correct: bool,
     response_ms: int | None = None,
+    source: ReviewSource = ReviewSource.CARD,
 ) -> Review:
-    """Process a single review within a session (Section 5.3 step 3e-f)."""
+    """Process a single review within a session (Section 5.3 step 3e-f).
+
+    `source` records where the rating came from. CARD (the card-player flow)
+    pairs the prediction with the same item's outcome and is trustworthy for
+    calibration; CHAT (the tutor) is approximate. See ADR-0001.
+    """
     now = datetime.now(timezone.utc)
     item = db.get(Item, item_id)
     if item is None:
@@ -183,6 +190,7 @@ def submit_review(
         predicted_recall=predicted,
         was_correct=was_correct,
         response_ms=response_ms,
+        source=source,
         reviewed_at=now,
     )
     db.add(review)

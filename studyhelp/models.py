@@ -50,6 +50,27 @@ class FSRSState(str, enum.Enum):
     RELEARNING = "RELEARNING"
 
 
+class ReviewSource(str, enum.Enum):
+    """Where a review's rating originated.
+
+    CARD reviews come from the card-player flow, where the stored
+    predicted_recall and the was_correct outcome refer to the *same* item, so
+    they are trustworthy for calibration. CHAT reviews come from the tutor
+    chat, which attributes the outcome to the first due item rather than the
+    item actually quizzed — untrustworthy for calibration until that
+    attribution is fixed. See ADR-0001.
+    """
+    CARD = "CARD"
+    CHAT = "CHAT"
+
+
+class BiasLabel(str, enum.Enum):
+    """Plain-language reading of calibration bias (closed set, per CONTEXT.md)."""
+    OVERCONFIDENT = "overconfident"
+    UNDERCONFIDENT = "underconfident"
+    WELL_CALIBRATED = "well calibrated"
+
+
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
@@ -142,6 +163,7 @@ class Review(Base):
     predicted_recall: Mapped[float | None] = mapped_column(Float, nullable=True)
     was_correct: Mapped[bool] = mapped_column(Boolean)
     response_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    source: Mapped[ReviewSource] = mapped_column(Enum(ReviewSource), default=ReviewSource.CARD)
     reviewed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
     item: Mapped["Item"] = relationship(back_populates="reviews")

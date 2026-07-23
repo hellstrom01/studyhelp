@@ -559,6 +559,66 @@ h3 { font-size: 16px; font-weight: 600; margin-bottom: 12px; }
 .summary-stat:last-child { border-bottom: none; }
 .summary-stat .val { font-weight: 600; }
 
+/* ── Insights / calibration ───────────────────────── */
+
+.insights-filter {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.insights-filter label {
+  font-size: 13px;
+  color: var(--text-dim);
+}
+
+.insights-filter select {
+  padding: 8px 12px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  font-size: 14px;
+  font-family: inherit;
+}
+
+.insights-filter select:focus { outline: none; border-color: var(--accent); }
+
+.insights-headline { margin-bottom: 16px; }
+
+#insights-empty {
+  line-height: 1.6;
+  padding: 32px 24px;
+}
+
+.insights-coverage {
+  margin-top: 8px;
+  opacity: 0.8;
+}
+
+.chart {
+  margin-top: 12px;
+  width: 100%;
+}
+
+.cal-svg {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.cal-svg .grid { stroke: var(--border); stroke-width: 1; }
+.cal-svg .diagonal { stroke: var(--text-dim); stroke-width: 1.5; stroke-dasharray: 4 4; opacity: 0.7; }
+.cal-svg .tick { fill: var(--text-dim); font-size: 10px; }
+.cal-svg .axis-label { fill: var(--text-dim); font-size: 11px; }
+.cal-svg .cal-point { fill: var(--accent); fill-opacity: 0.75; stroke: var(--accent-hover); stroke-width: 1; }
+.cal-svg .trend-line { fill: none; stroke: var(--accent); stroke-width: 2; }
+.cal-svg .trend-dot { fill: var(--accent); stroke: var(--surface); stroke-width: 1.5; }
+
+/* The reliability diagram reads best as a square, capped so it doesn't dominate. */
+#cal-reliability { max-width: 340px; }
+
 /* ── Misc ─────────────────────────────────────────── */
 
 .empty {

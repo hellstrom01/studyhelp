@@ -20,6 +20,10 @@
         <span class="nav-icon">&#9654;</span> Study
       </button>
 
+      <button class="nav-item" data-view="insights">
+        <span class="nav-icon">&#9739;</span> Insights
+      </button>
+
       <div class="nav-section-label">Your Courses</div>
       <div id="sidebar-subjects">
         <div class="nav-empty">No courses yet</div>
@@ -63,6 +67,54 @@
       </p>
 
       <p class="subtitle" style="margin-top: 16px;">Click a course to start a study session with your AI tutor.</p>
+    </div>
+
+    <!-- ── Insights (calibration) ── -->
+    <div id="view-insights" class="view">
+      <div class="view-header">
+        <h2>Insights</h2>
+        <p class="subtitle">Calibration &mdash; how well your sense of "I know this" matches reality.</p>
+      </div>
+
+      <div class="insights-filter">
+        <label for="insights-course">Course</label>
+        <select id="insights-course"><option value="">All courses</option></select>
+      </div>
+
+      <!-- Honest empty state when there's too little trustworthy data -->
+      <div id="insights-empty" class="card empty hidden"></div>
+
+      <!-- Charts (hidden until threshold met) -->
+      <div id="insights-charts" class="hidden">
+        <div class="stats insights-headline">
+          <div class="stat">
+            <div class="number" id="cal-headline">-</div>
+            <div class="label">Avg calibration error</div>
+          </div>
+          <div class="stat">
+            <div class="number" id="cal-bias">-</div>
+            <div class="label" id="cal-bias-label">Bias</div>
+          </div>
+          <div class="stat">
+            <div class="number" id="cal-count">-</div>
+            <div class="label">Reviews scored</div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3>Reliability</h3>
+          <p class="subtitle">Each point is a confidence band: predicted recall vs. how often you were actually right. On the line = perfectly calibrated. Above = underconfident, below = overconfident.</p>
+          <div class="chart" id="cal-reliability"></div>
+        </div>
+
+        <div class="card">
+          <h3>Calibration error over time</h3>
+          <p class="subtitle">Average gap between predicted and actual recall, per day. Lower is better &mdash; a falling line means your self-assessment is getting sharper.</p>
+          <div class="chart" id="cal-trend"></div>
+        </div>
+      </div>
+
+      <p class="insights-coverage subtitle" id="insights-coverage"></p>
     </div>
 
     <!-- ── Course detail ── -->

@@ -63,6 +63,12 @@ function setupEventListeners() {
     .addEventListener('click', () => showView('study'));
   document.querySelector('.nav-item[data-view="add-course"]')
     .addEventListener('click', () => showView('add-course'));
+  document.querySelector('.nav-item[data-view="insights"]')
+    .addEventListener('click', () => showView('insights'));
+
+  // Insights course filter
+  document.getElementById('insights-course')
+    .addEventListener('change', loadInsights);
 
   // Add course
   document.getElementById('btn-add-subject').addEventListener('click', addSubject);
@@ -118,6 +124,7 @@ function showView(name) {
   if (navBtn) navBtn.classList.add('active');
 
   if (name === 'study') loadStudy();
+  if (name === 'insights') loadInsights();
   if (name === 'add-course') document.getElementById('subject-name').focus();
 }
 
@@ -536,6 +543,147 @@ async function endSessionEarly() {
   `;
 
   currentSession = null;
+}
+
+// ── INSIGHTS (calibration) ───────────────────────────
+
+function populateInsightsCourses() {
+  const sel = document.getElementById('insights-course');
+  const current = sel.value;
+  sel.innerHTML = ['<option value="">All courses</option>']
+    .concat(subjectsCache.map(s => `<option value="${s.id}">${esc(s.name)}</option>`))
+    .join('');
+  if ([...sel.options].some(o => o.value === current)) sel.value = current;
+}
+
+async function loadInsights() {
+  populateInsightsCourses();
+
+  const subjectId = document.getElementById('insights-course').value;
+  const qs = subjectId ? `?subject_id=${subjectId}` : '';
+
+  let data;
+  try {
+    data = await api('GET', `/users/${USER_ID}/insights/calibration${qs}`);
+  } catch {
+    document.getElementById('insights-charts').classList.add('hidden');
+    const empty = document.getElementById('insights-empty');
+    empty.classList.remove('hidden');
+    empty.textContent = 'Could not load insights.';
+    return;
+  }
+
+  renderInsights(data);
+}
+
+function renderInsights(data) {
+  const empty = document.getElementById('insights-empty');
+  const charts = document.getElementById('insights-charts');
+  const cov = data.coverage;
+
+  // Coverage note is always shown, so the numbers are never a mystery.
+  let covText = `${cov.trustworthy_count} trustworthy review${cov.trustworthy_count !== 1 ? 's' : ''} scored`;
+  if (cov.excluded_chat_count > 0) {
+    covText += ` · ${cov.excluded_chat_count} tutor-chat review${cov.excluded_chat_count !== 1 ? 's' : ''} excluded (approximate scoring)`;
+  }
+  document.getElementById('insights-coverage').textContent = covText;
+
+  if (!cov.threshold_met) {
+    charts.classList.add('hidden');
+    empty.classList.remove('hidden');
+    const floor = cov.min_trustworthy;
+    const need = Math.max(0, floor - cov.trustworthy_count);
+    empty.innerHTML =
+      `<strong>Not enough data yet.</strong><br>` +
+      `Keep studying — calibration needs at least ${floor} scored reviews` +
+      (need > 0 ? ` (${need} to go).` : `.`) +
+      `<br><span class="subtitle">Only card-review sessions count toward calibration right now; ` +
+      `tutor-chat answers are excluded because their scoring is approximate.</span>`;
+    return;
+  }
+
+  empty.classList.add('hidden');
+  charts.classList.remove('hidden');
+
+  document.getElementById('cal-headline').textContent = fmtPct(data.headline);
+  document.getElementById('cal-bias').textContent = fmtSignedPct(data.bias);
+  document.getElementById('cal-bias-label').textContent = data.bias_label || 'Bias';
+  document.getElementById('cal-count').textContent = cov.trustworthy_count;
+
+  document.getElementById('cal-reliability').innerHTML = svgReliability(data.curve);
+  document.getElementById('cal-trend').innerHTML = svgTrend(data.trend);
+}
+
+function svgReliability(curve) {
+  const S = 300, pad = 34, plot = S - pad * 2;
+  const X = v => pad + v * plot;
+  const Y = v => pad + (1 - v) * plot;  // invert y
+
+  let g = '';
+  for (let i = 0; i <= 5; i++) {
+    const t = i / 5;
+    g += `<line x1="${X(t)}" y1="${Y(0)}" x2="${X(t)}" y2="${Y(1)}" class="grid"/>`;
+    g += `<line x1="${X(0)}" y1="${Y(t)}" x2="${X(1)}" y2="${Y(t)}" class="grid"/>`;
+    g += `<text x="${X(t)}" y="${Y(0) + 15}" class="tick" text-anchor="middle">${t.toFixed(1)}</text>`;
+    g += `<text x="${X(0) - 6}" y="${Y(t) + 3}" class="tick" text-anchor="end">${t.toFixed(1)}</text>`;
+  }
+
+  const diag = `<line x1="${X(0)}" y1="${Y(0)}" x2="${X(1)}" y2="${Y(1)}" class="diagonal"/>`;
+
+  const pts = curve.map(b => {
+    const r = Math.min(12, 4 + Math.sqrt(b.n));
+    return `<circle cx="${X(b.mean_predicted)}" cy="${Y(b.actual_accuracy)}" r="${r}" class="cal-point">` +
+      `<title>Predicted ${Math.round(b.mean_predicted * 100)}% · actual ${Math.round(b.actual_accuracy * 100)}% · n=${b.n}</title>` +
+      `</circle>`;
+  }).join('');
+
+  const xlab = `<text x="${X(0.5)}" y="${S - 2}" class="axis-label" text-anchor="middle">Predicted recall</text>`;
+  const ylab = `<text x="10" y="${Y(0.5)}" class="axis-label" text-anchor="middle" transform="rotate(-90 10 ${Y(0.5)})">Actual accuracy</text>`;
+
+  return `<svg viewBox="0 0 ${S} ${S}" class="cal-svg" preserveAspectRatio="xMidYMid meet" role="img">${g}${diag}${pts}${xlab}${ylab}</svg>`;
+}
+
+function svgTrend(trend) {
+  const W = 620, H = 200, padL = 44, padR = 16, padT = 16, padB = 34;
+  const n = trend.length;
+  const maxErr = Math.max(0.5, ...trend.map(p => p.mean_abs_error));
+  const X = i => padL + (n <= 1 ? 0.5 : i / (n - 1)) * (W - padL - padR);
+  const Y = v => padT + (1 - v / maxErr) * (H - padT - padB);
+
+  let g = '';
+  [0, maxErr / 2, maxErr].forEach(t => {
+    g += `<line x1="${X(0)}" y1="${Y(t)}" x2="${W - padR}" y2="${Y(t)}" class="grid"/>`;
+    g += `<text x="${padL - 6}" y="${Y(t) + 3}" class="tick" text-anchor="end">${Math.round(t * 100)}%</text>`;
+  });
+
+  const pointsStr = trend.map((p, i) => `${X(i)},${Y(p.mean_abs_error)}`).join(' ');
+  const line = n > 1 ? `<polyline points="${pointsStr}" class="trend-line"/>` : '';
+  const dots = trend.map((p, i) =>
+    `<circle cx="${X(i)}" cy="${Y(p.mean_abs_error)}" r="3.5" class="trend-dot">` +
+    `<title>${esc(p.date)}: ${(p.mean_abs_error * 100).toFixed(1)}% (n=${p.n})</title></circle>`
+  ).join('');
+
+  let xlabels = '';
+  if (n > 0) {
+    xlabels += `<text x="${X(0)}" y="${H - 8}" class="tick" text-anchor="start">${esc(shortDate(trend[0].date))}</text>`;
+    if (n > 1) {
+      xlabels += `<text x="${X(n - 1)}" y="${H - 8}" class="tick" text-anchor="end">${esc(shortDate(trend[n - 1].date))}</text>`;
+    }
+  }
+
+  return `<svg viewBox="0 0 ${W} ${H}" class="cal-svg" preserveAspectRatio="xMidYMid meet" role="img">${g}${line}${dots}${xlabels}</svg>`;
+}
+
+function shortDate(iso) {
+  const d = new Date(iso + 'T00:00:00Z');
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+}
+
+function fmtPct(v) { return v == null ? '-' : Math.round(v * 100) + '%'; }
+
+function fmtSignedPct(v) {
+  if (v == null) return '-';
+  return (v >= 0 ? '+' : '−') + Math.round(Math.abs(v) * 100) + '%';
 }
 
 // ── Helpers ──────────────────────────────────────────

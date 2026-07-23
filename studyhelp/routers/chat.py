@@ -6,7 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session as DBSession, joinedload
 
 from ..database import get_db
-from ..models import FSRSState, Item, Rating, Subject, Topic, User
+from ..models import FSRSState, Item, Rating, ReviewSource, Subject, Topic, User
 from ..scheduler import get_predicted_recall
 from ..session import submit_review
 from ..tutor import chat, parse_eval
@@ -133,12 +133,14 @@ def _try_log_review(db: DBSession, user_id: int, session_id: int,
 
     was_correct = eval_data.get("was_correct", rating_str != "AGAIN")
 
-    # Use the first due item as the reviewed item (best approximation)
+    # Use the first due item as the reviewed item (best approximation).
+    # Tagged CHAT: the outcome may belong to a different item than the one whose
+    # prediction we store, so these are excluded from calibration (ADR-0001).
     if due_items:
         try:
             submit_review(
                 db, user_id, session_id, due_items[0]["id"],
-                rating, was_correct,
+                rating, was_correct, source=ReviewSource.CHAT,
             )
         except (ValueError, Exception):
             pass
