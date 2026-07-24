@@ -6,10 +6,10 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session as DBSession, joinedload
 
 from ..database import get_db
-from ..models import FSRSState, Item, Rating, Subject, Topic, User
+from ..models import FSRSState, Item, Rating, ReviewSource, Subject, Topic, User
 from ..scheduler import get_predicted_recall
 from ..session import submit_review
-from ..tutor import chat, parse_eval
+from ..tutor import chat, parse_eval, resolve_reviewed_item
 
 router = APIRouter(prefix="/users/{user_id}/chat", tags=["chat"])
 
@@ -123,7 +123,18 @@ def send_message(
 
 def _try_log_review(db: DBSession, user_id: int, session_id: int,
                     due_items: list[dict], eval_data: dict):
-    """Best-effort: log the tutor's evaluation as an FSRS review."""
+    """Best-effort: log the tutor's evaluation as an FSRS review.
+
+    Attributes the outcome to the item the tutor says it tested (`item_ref`),
+    resolved against the due-item context. When the tutor didn't test a specific
+    due item — or named one we can't verify — nothing is logged, rather than
+    guessing. Attributed reviews pair prediction and outcome on the same item, so
+    they count toward calibration (ADR-0001).
+    """
+    item_id = resolve_reviewed_item(eval_data, due_items)
+    if item_id is None:
+        return
+
     rating_str = eval_data.get("rating", "").upper()
     rating_map = {"AGAIN": Rating.AGAIN, "HARD": Rating.HARD,
                   "GOOD": Rating.GOOD, "EASY": Rating.EASY}
@@ -133,12 +144,10 @@ def _try_log_review(db: DBSession, user_id: int, session_id: int,
 
     was_correct = eval_data.get("was_correct", rating_str != "AGAIN")
 
-    # Use the first due item as the reviewed item (best approximation)
-    if due_items:
-        try:
-            submit_review(
-                db, user_id, session_id, due_items[0]["id"],
-                rating, was_correct,
-            )
-        except (ValueError, Exception):
-            pass
+    try:
+        submit_review(
+            db, user_id, session_id, item_id,
+            rating, was_correct, source=ReviewSource.CHAT,
+        )
+    except Exception:
+        pass

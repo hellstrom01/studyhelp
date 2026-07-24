@@ -50,6 +50,24 @@ class FSRSState(str, enum.Enum):
     RELEARNING = "RELEARNING"
 
 
+class ReviewSource(str, enum.Enum):
+    """Where a review's rating originated: CARD (card-player flow) or CHAT (tutor
+    chat). This records provenance and feeds the coverage counts; trust for
+    calibration is carried separately by `Review.attribution_exact`. Both sources
+    can be trustworthy now that chat outcomes are attributed to the item actually
+    quizzed. See ADR-0001 and ADR-0003.
+    """
+    CARD = "CARD"
+    CHAT = "CHAT"
+
+
+class BiasLabel(str, enum.Enum):
+    """Plain-language reading of calibration bias (closed set, per CONTEXT.md)."""
+    OVERCONFIDENT = "overconfident"
+    UNDERCONFIDENT = "underconfident"
+    WELL_CALIBRATED = "well calibrated"
+
+
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
@@ -142,6 +160,14 @@ class Review(Base):
     predicted_recall: Mapped[float | None] = mapped_column(Float, nullable=True)
     was_correct: Mapped[bool] = mapped_column(Boolean)
     response_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    source: Mapped[ReviewSource] = mapped_column(Enum(ReviewSource), default=ReviewSource.CARD)
+    # True when the prediction and outcome provably refer to the same item, so
+    # this review is trustworthy for calibration: always for CARD reviews, and
+    # for CHAT reviews whose outcome was resolved to the item actually quizzed.
+    # Legacy chat rows written before attribution was fixed are null/false and
+    # stay excluded. Carries the trust decision; `source` still records provenance.
+    # See ADR-0003.
+    attribution_exact: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     reviewed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
     item: Mapped["Item"] = relationship(back_populates="reviews")

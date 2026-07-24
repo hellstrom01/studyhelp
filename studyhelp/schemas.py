@@ -4,7 +4,7 @@ from datetime import datetime
 
 from pydantic import BaseModel
 
-from .models import FSRSState, ItemType, Rating, SubjectType
+from .models import BiasLabel, FSRSState, ItemType, Rating, SubjectType
 
 
 # ── User ─────────────────────────────────────────────────────────────────
@@ -148,6 +148,38 @@ class SessionOut(BaseModel):
     avg_calibration_error: float | None
 
     model_config = {"from_attributes": True}
+
+
+# ── Calibration insights ─────────────────────────────────────────────────
+
+class CalibrationBin(BaseModel):
+    bin_low: float
+    bin_high: float
+    mean_predicted: float
+    actual_accuracy: float
+    n: int
+
+
+class TrendPoint(BaseModel):
+    date: str  # UTC calendar day, ISO "YYYY-MM-DD"
+    mean_abs_error: float
+    n: int
+
+
+class CalibrationCoverage(BaseModel):
+    trustworthy_count: int
+    excluded_chat_count: int
+    threshold_met: bool
+    min_trustworthy: int  # the floor below which charts stay hidden
+
+
+class CalibrationOut(BaseModel):
+    headline: float | None
+    bias: float | None
+    bias_label: BiasLabel | None
+    curve: list[CalibrationBin]
+    trend: list[TrendPoint]
+    coverage: CalibrationCoverage
 
 
 # ── Queue item (what the session player serves) ──────────────────────────
