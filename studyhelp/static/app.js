@@ -584,7 +584,7 @@ function renderInsights(data) {
   // Coverage note is always shown, so the numbers are never a mystery.
   let covText = `${cov.trustworthy_count} trustworthy review${cov.trustworthy_count !== 1 ? 's' : ''} scored`;
   if (cov.excluded_chat_count > 0) {
-    covText += ` · ${cov.excluded_chat_count} tutor-chat review${cov.excluded_chat_count !== 1 ? 's' : ''} excluded (not tied to a specific item)`;
+    covText += ` · ${cov.excluded_chat_count} tutor-chat review${cov.excluded_chat_count !== 1 ? 's' : ''} excluded (recorded before exact attribution)`;
   }
   document.getElementById('insights-coverage').textContent = covText;
 
