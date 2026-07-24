@@ -67,7 +67,12 @@ class Seeder:
         subj._seed_item_id = item.id
         return subj
 
-    def add(self, subject, predicted, correct, source=ReviewSource.CARD, when=None):
+    def add(self, subject, predicted, correct, source=ReviewSource.CARD, when=None,
+            attribution_exact=None):
+        # Default the trust flag to match the source when not given explicitly:
+        # CARD reviews are exact by construction; other sources are not unless said so.
+        if attribution_exact is None:
+            attribution_exact = source == ReviewSource.CARD
         review = Review(
             item_id=subject._seed_item_id,
             user_id=self.user.id,
@@ -75,6 +80,7 @@ class Seeder:
             predicted_recall=predicted,
             was_correct=correct,
             source=source,
+            attribution_exact=attribution_exact,
             reviewed_at=when or BASE_DAY,
         )
         self.db.add(review)

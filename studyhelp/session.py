@@ -170,9 +170,11 @@ def submit_review(
 ) -> Review:
     """Process a single review within a session (Section 5.3 step 3e-f).
 
-    `source` records where the rating came from. CARD (the card-player flow)
-    pairs the prediction with the same item's outcome and is trustworthy for
-    calibration; CHAT (the tutor) is approximate. See ADR-0001.
+    `source` records where the rating came from (CARD = card-player, CHAT =
+    tutor). Every review written here has its prediction and outcome referring to
+    the same `item_id` — the card path passes the reviewed item, and the chat path
+    only calls this after resolving the item actually quizzed — so it is marked
+    `attribution_exact` and is trustworthy for calibration. See ADR-0003.
     """
     now = datetime.now(timezone.utc)
     item = db.get(Item, item_id)
@@ -191,6 +193,7 @@ def submit_review(
         was_correct=was_correct,
         response_ms=response_ms,
         source=source,
+        attribution_exact=True,
         reviewed_at=now,
     )
     db.add(review)
