@@ -4,10 +4,11 @@ Computes predicted-vs-actual recall from trustworthy review data. Everything the
 dashboard shows comes from `compute_calibration` — a single read-only seam so the
 logic can be tested without the web or LLM layers.
 
-Trust policy (ADR-0001): only CARD-sourced reviews are counted, because their
-stored predicted_recall and was_correct outcome refer to the same item. CHAT
-reviews are excluded (but reported as coverage). We compute fresh from the reviews
-and never read StudySession.avg_calibration_error (ADR-0002).
+Trust policy (ADR-0001): only reviews whose prediction and outcome provably refer
+to the same item are counted — carried by the `attribution_exact` flag (true for
+CARD reviews and for CHAT reviews resolved to the item actually quizzed). Legacy
+approximate CHAT reviews are excluded (but reported as coverage). We compute fresh
+from the reviews and never read StudySession.avg_calibration_error (ADR-0002).
 """
 
 from datetime import timezone
@@ -22,6 +23,12 @@ MIN_TRUSTWORTHY = 20   # overall floor before any charts render
 MIN_BIN = 5            # per-bin floor before a curve point is plotted
 NUM_BINS = 10          # deciles over [0, 1]
 BIAS_EPS = 0.05        # |bias| under this reads as "well calibrated"
+
+
+def _is_trustworthy(review) -> bool:
+    """A review counts toward calibration when its prediction and outcome refer
+    to the same item (attribution_exact) and a prediction was recorded."""
+    return review.attribution_exact is True and review.predicted_recall is not None
 
 
 def _utc_date_str(dt):
@@ -70,11 +77,13 @@ def compute_calibration(db: Session, user_id: int, subject_id: int | None = None
 
     reviews = list(db.scalars(q))
 
-    trustworthy = [
-        r for r in reviews
-        if r.source == ReviewSource.CARD and r.predicted_recall is not None
-    ]
-    excluded_chat_count = sum(1 for r in reviews if r.source == ReviewSource.CHAT)
+    trustworthy = [r for r in reviews if _is_trustworthy(r)]
+    # Chat reviews that did NOT count: legacy/approximate rows whose prediction
+    # and outcome may refer to different items. Reported so exclusion is visible.
+    excluded_chat_count = sum(
+        1 for r in reviews
+        if r.source == ReviewSource.CHAT and not _is_trustworthy(r)
+    )
 
     if len(trustworthy) < MIN_TRUSTWORTHY:
         return _empty(len(trustworthy), excluded_chat_count)

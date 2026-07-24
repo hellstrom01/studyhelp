@@ -22,11 +22,18 @@ and docs. See `docs/adr/` for decisions.
   deciles, each bin plotted as mean-predicted vs. actual accuracy against a 45°
   perfect-calibration line.
 
-- **Review source** — where a review's rating came from: `CARD` (card-player flow,
-  trustworthy for calibration) or `CHAT` (tutor chat, approximate). See ADR-0001.
+- **Review source** — where a review's rating came from: `CARD` (card-player flow)
+  or `CHAT` (tutor chat). Records provenance and feeds coverage; trust is carried
+  separately by the attribution flag. See ADR-0001, ADR-0003.
 
-- **Trustworthy review** — a `CARD` review with a non-null predicted recall; the
-  only kind that counts toward calibration.
+- **Attribution (exact)** — a review is *exactly attributed* when its predicted
+  recall and outcome provably refer to the same item. Always true for `CARD`
+  reviews and for `CHAT` reviews resolved to the item the tutor actually quizzed;
+  false/absent for legacy approximate chat rows. Stored as `attribution_exact`.
+
+- **Trustworthy review** — an exactly-attributed review with a non-null predicted
+  recall; the only kind that counts toward calibration. Either source qualifies.
 
 - **Coverage** — how many trustworthy reviews back the dashboard, and how many
-  were excluded as chat-sourced. Shown to the user so exclusions are transparent.
+  chat reviews were excluded (legacy/unattributed). Shown to the user so
+  exclusions are transparent.

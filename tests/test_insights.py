@@ -133,6 +133,46 @@ def test_trend_buckets_by_utc_day(db, seed):
     assert trend[0]["mean_abs_error"] == pytest.approx(4.2 / 12)
 
 
+def test_attributed_chat_reviews_now_count(db, seed):
+    # After the attribution fix, CHAT reviews resolved to the item actually
+    # quizzed carry attribution_exact=True and are trustworthy for calibration.
+    subj = seed.subject()
+    seed.add_many(subj, 0.85, n_correct=17, n_wrong=3,
+                  source=ReviewSource.CHAT, attribution_exact=True)
+
+    out = compute_calibration(db, seed.user.id)
+
+    assert out["coverage"]["trustworthy_count"] == 20
+    assert out["coverage"]["threshold_met"] is True
+    assert out["headline"] == pytest.approx((17 * 0.15 + 3 * 0.85) / 20)
+
+
+def test_legacy_chat_excluded_while_attributed_chat_counts(db, seed):
+    # Mixed chat data: attributed rows count; legacy approximate rows stay out
+    # and are reported as excluded so coverage remains honest.
+    subj = seed.subject()
+    seed.add_many(subj, 0.85, n_correct=17, n_wrong=3,
+                  source=ReviewSource.CHAT, attribution_exact=True)
+    seed.add_many(subj, 0.05, n_correct=0, n_wrong=6,
+                  source=ReviewSource.CHAT, attribution_exact=False)
+
+    out = compute_calibration(db, seed.user.id)
+
+    assert out["coverage"]["trustworthy_count"] == 20
+    assert out["coverage"]["excluded_chat_count"] == 6
+    # the noisy legacy rows must not move the headline
+    assert out["headline"] == pytest.approx((17 * 0.15 + 3 * 0.85) / 20)
+
+
+def test_card_review_without_flag_is_still_trustworthy(db, seed):
+    # CARD reviews are exact by construction; the Seeder defaults the flag true.
+    subj = seed.subject()
+    seed.add_many(subj, 0.85, n_correct=18, n_wrong=2)
+
+    out = compute_calibration(db, seed.user.id)
+    assert out["coverage"]["trustworthy_count"] == 20
+
+
 def test_subject_filter_scopes_everything(db, seed):
     a = seed.subject("A")
     b = seed.subject("B")

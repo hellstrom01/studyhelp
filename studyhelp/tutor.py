@@ -38,9 +38,11 @@ You will receive context about what the student is studying (course, topic) and 
 ## Evaluation
 After each student response, output a JSON block (hidden from the student) to rate their answer:
 ```json
-{"rating": "AGAIN|HARD|GOOD|EASY", "was_correct": true|false, "item_summary": "brief description of what was tested"}
+{"rating": "AGAIN|HARD|GOOD|EASY", "was_correct": true|false, "item_summary": "brief description of what was tested", "item_ref": <id or null>}
 ```
 Put this at the very end of your message, on its own line, wrapped in <eval>...</eval> tags. The student won't see this.
+
+`item_ref` must be the `id` of the due review item you just tested (the number in its `(id:N)` tag). If your question was NOT about one of the listed due items — e.g. a general topic question or a follow-up probe not tied to a specific due item — set `item_ref` to null. Never invent an id that wasn't listed.
 
 Rating guide:
 - AGAIN: wrong, couldn't answer, or fundamental misunderstanding
@@ -70,9 +72,10 @@ def build_context(course_name: str, topic_name: str | None, due_items: list[dict
     ctx += "\n"
 
     if due_items:
-        ctx += "\nDue review items (ask about these, interleaved):\n"
+        ctx += "\nDue review items (ask about these, interleaved). Each is tagged "
+        ctx += "with a stable id — cite it as item_ref in your eval when you test that item:\n"
         for item in due_items[:10]:  # Cap at 10 to avoid context bloat
-            ctx += f"- [{item['type']}] {item['front']}"
+            ctx += f"- (id:{item['id']}) [{item['type']}] {item['front']}"
             if item.get('back'):
                 ctx += f" (answer: {item['back']})"
             ctx += "\n"
@@ -119,6 +122,33 @@ def chat(messages: list[dict], course_name: str, topic_name: str | None,
     )
 
     return response.content[0].text
+
+
+def resolve_reviewed_item(eval_data: dict | None, due_items: list[dict]) -> int | None:
+    """Decide which due item the tutor's evaluation should be logged against.
+
+    The tutor names the item it tested via `item_ref` in its eval block (the id
+    we surfaced in its study context). We return that id only when it matches an
+    item that was genuinely in `due_items` — so a missing, malformed, or
+    hallucinated ref resolves to None and no review is written. This is what
+    keeps a chat review's prediction and outcome referring to the same item.
+    """
+    if not eval_data or not due_items:
+        return None
+
+    ref = eval_data.get("item_ref")
+    # Reject None and bool up front: bool is an int subclass, so `int(True)` would
+    # otherwise silently resolve to id 1 — a wrong-type ref must not attribute.
+    if ref is None or isinstance(ref, bool):
+        return None
+
+    try:
+        ref_id = int(ref)
+    except (ValueError, TypeError):
+        return None
+
+    due_ids = {item["id"] for item in due_items}
+    return ref_id if ref_id in due_ids else None
 
 
 def parse_eval(response_text: str) -> tuple[str, dict | None]:

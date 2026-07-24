@@ -584,7 +584,7 @@ function renderInsights(data) {
   // Coverage note is always shown, so the numbers are never a mystery.
   let covText = `${cov.trustworthy_count} trustworthy review${cov.trustworthy_count !== 1 ? 's' : ''} scored`;
   if (cov.excluded_chat_count > 0) {
-    covText += ` · ${cov.excluded_chat_count} tutor-chat review${cov.excluded_chat_count !== 1 ? 's' : ''} excluded (approximate scoring)`;
+    covText += ` · ${cov.excluded_chat_count} tutor-chat review${cov.excluded_chat_count !== 1 ? 's' : ''} excluded (not tied to a specific item)`;
   }
   document.getElementById('insights-coverage').textContent = covText;
 
@@ -597,8 +597,8 @@ function renderInsights(data) {
       `<strong>Not enough data yet.</strong><br>` +
       `Keep studying — calibration needs at least ${floor} scored reviews` +
       (need > 0 ? ` (${need} to go).` : `.`) +
-      `<br><span class="subtitle">Only card-review sessions count toward calibration right now; ` +
-      `tutor-chat answers are excluded because their scoring is approximate.</span>`;
+      `<br><span class="subtitle">Tutor-chat answers count once they're tied to a specific due item; ` +
+      `only broad questions not linked to an item are left out.</span>`;
     return;
   }
 

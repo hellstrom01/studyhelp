@@ -1,6 +1,12 @@
 # ADR-0001: Review source discriminator and calibration trust policy
 
-Status: Accepted (2026-07-23)
+Status: Accepted (2026-07-23) — amended by ADR-0003
+
+> **Amended by [ADR-0003](0003-chat-attribution-and-trust-flag.md) (2026-07-24):**
+> chat outcomes are now attributed to the item actually quizzed, and trust is
+> carried by `Review.attribution_exact` rather than `source == CARD`. The
+> "counts only `source == CARD`" rule below is superseded — attributed CHAT
+> reviews now count too.
 
 ## Context
 
