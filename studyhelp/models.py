@@ -173,9 +173,12 @@ class Review(Base):
     item: Mapped["Item"] = relationship(back_populates="reviews")
 
 
-# ── Session ──────────────────────────────────────────────────────────────
+# ── Legacy session (card-player flow) ────────────────────────────────────
 
-class StudySession(Base):
+class LegacySession(Base):
+    """Session record for the legacy card-player flow. The phased study session
+    (ADR-0004) is `StudySession` below; this model is retired by issue #11.
+    """
     __tablename__ = "sessions"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -187,6 +190,50 @@ class StudySession(Base):
     review_count: Mapped[int] = mapped_column(Integer, default=0)
     pomodoros_completed: Mapped[int] = mapped_column(Integer, default=0)
     avg_calibration_error: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+
+# ── Study session (phased encoding mode, ADR-0004) ───────────────────────
+
+class StudySession(Base):
+    """One phased study session: level check → work intervals (each closed by a
+    reflection) → wind-down. Produces no Review rows. The client owns the timer
+    and reports phase transitions; the server accumulates work-interval seconds
+    from explicit interval start/end calls, so level-check and break time are
+    never counted.
+    """
+    __tablename__ = "study_sessions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    subject_id: Mapped[int] = mapped_column(ForeignKey("subjects.id"))
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    work_seconds: Mapped[int] = mapped_column(Integer, default=0)
+    # Start of the currently open work interval; null outside intervals.
+    interval_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    notes: Mapped[str] = mapped_column(Text, default="")
+    # The user's own wind-down recap, captured when the session ends. Distinct
+    # from the LLM-written session summary (issue #9), which lands here later.
+    wind_down_recap: Mapped[str] = mapped_column(Text, default="")
+
+    subject: Mapped["Subject"] = relationship()
+    messages: Mapped[list["StudyChatMessage"]] = relationship(
+        back_populates="session", cascade="all, delete-orphan",
+        order_by="StudyChatMessage.id",
+    )
+
+
+class StudyChatMessage(Base):
+    """One turn of a study session's tutor chat, persisted server-side."""
+    __tablename__ = "study_messages"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    session_id: Mapped[int] = mapped_column(ForeignKey("study_sessions.id"))
+    role: Mapped[str] = mapped_column(String(9))  # "user" | "assistant"
+    content: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+    session: Mapped["StudySession"] = relationship(back_populates="messages")
 
 
 # ── ExplanationLog ───────────────────────────────────────────────────────

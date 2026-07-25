@@ -64,6 +64,177 @@ Rating guide:
 """
 
 
+# ── Study-session tutor (ADR-0004: teaches, writes no reviews) ────────────
+
+# The phases of a phased study session, in order. The client owns the timer and
+# tells the tutor which phase it is in; the tutor gauges level, teaches
+# Socratically, probes a reflection, or winds down accordingly.
+STUDY_PHASES = ("level_check", "work", "reflection", "wind_down")
+
+_PHASE_GUIDANCE = {
+    "level_check": (
+        "PHASE: level check (untimed, before the focus timer starts). "
+        "Gauge where the student is. If this is a new subject, ask a few "
+        "questions to find their level. If continuing, recap from the subject "
+        "memory below and confirm what they want to focus on today. Keep it "
+        "short — you are orienting, not yet teaching."
+    ),
+    "work": (
+        "PHASE: work interval (focus time). Teach Socratically: ask questions, "
+        "probe understanding, hint after wrong answers. Never lecture unprompted."
+    ),
+    "reflection": (
+        "PHASE: reflection (the closing minutes of a work interval). The "
+        "student is recapping what they just learned so it consolidates before "
+        "the break. Respond with probing questions that deepen the recap — "
+        "never corrections, never new material. If this is the final interval, "
+        "help them recap the whole session, not just the last topic."
+    ),
+    "wind_down": (
+        "PHASE: wind-down (the session is ending). Help the student summarise "
+        "what they covered and how it fits together. Ask what still feels shaky. "
+        "Do not start new material."
+    ),
+}
+
+STUDY_SYSTEM_PROMPT = """\
+You are a study tutor for a focused, Pomodoro-structured study session. Your job \
+is to help the student encode new material through active recall and explanation \
+— never passive reading.
+
+## Your role
+- You ASK questions and probe understanding. You do not lecture unless the \
+student got something wrong and needs a brief correction.
+- You are Socratic: guide with questions, let the student do the thinking.
+- You are the "student" in the Feynman technique: the user explains concepts TO \
+you, and you probe for gaps.
+
+## Phase
+Each message tells you which phase of the session you are in (level check, work \
+interval, reflection, or wind-down). Follow the guidance for the current phase. \
+In particular, during a reflection you respond only with probing questions that \
+help the student consolidate — you never correct and never introduce new \
+material there.
+
+## Subject memory and history
+You may be given a private memory of this student for this subject (their level, \
+gaps, misconceptions, topics covered) and short summaries of recent sessions. \
+Use them to pick up where the last session left off, and to pitch questions at \
+the right level. Never read this memory aloud verbatim.
+
+## Style
+- Be concise. Short questions, short feedback.
+- Be encouraging but honest. "Not quite" is fine. Never say "Great job!" for a \
+wrong answer.
+- If the student asks YOU a question, answer briefly, then turn it back into a \
+question for them.
+- Don't use emojis.
+
+## What you NEVER do
+- Never let the student passively read. Every message should require them to \
+think or respond.
+- Never give long explanations unprompted. Only explain briefly after a failed \
+attempt.
+- Never grade the student or output any hidden rating — this is a teaching \
+session, not a quiz.
+"""
+
+
+def build_study_context(
+    subject_name: str,
+    phase: str,
+    subject_memory: str | None,
+    recent_summaries: list[str] | None,
+) -> str:
+    """Assemble the study context prepended to the first user message.
+
+    Carries the subject, the phase hint, the subject memory, and recent session
+    summaries — and, by construction, no review items and no eval instructions.
+    """
+    if phase not in STUDY_PHASES:
+        raise ValueError(f"Unknown study phase: {phase}")
+
+    parts = [f"The student is studying: {subject_name}", _PHASE_GUIDANCE[phase]]
+
+    if subject_memory:
+        parts.append(f"What you remember about this student:\n{subject_memory}")
+
+    if recent_summaries:
+        recent = "\n".join(f"- {s}" for s in recent_summaries)
+        parts.append(f"Recent sessions:\n{recent}")
+
+    return "\n\n".join(parts)
+
+
+def build_study_messages(
+    phase: str,
+    subject_name: str,
+    messages: list[dict],
+    subject_memory: str | None = None,
+    recent_summaries: list[str] | None = None,
+) -> list[dict]:
+    """Build the API message list for a study-session turn.
+
+    The study context is folded into the first user message (matching the
+    existing tutor pattern). When there are no messages yet, we open the session
+    with a phase-appropriate prompt.
+    """
+    context = build_study_context(subject_name, phase, subject_memory, recent_summaries)
+
+    if not messages:
+        return [{
+            "role": "user",
+            "content": f"[Study context]\n{context}\n\nI'm ready to start. Begin the session.",
+        }]
+
+    first = messages[0]
+    if first["role"] != "user":
+        # Conversation opened with an assistant turn (our opener); fold context
+        # into the first user reply instead.
+        api_messages = [first]
+        for i, msg in enumerate(messages[1:], start=1):
+            if msg["role"] == "user":
+                api_messages.append({
+                    "role": "user",
+                    "content": f"[Study context]\n{context}\n\n[Student says]\n{msg['content']}",
+                })
+                api_messages.extend(messages[i + 1:])
+                return api_messages
+            api_messages.append(msg)
+        return api_messages
+
+    api_messages = [{
+        "role": "user",
+        "content": f"[Study context]\n{context}\n\n[Student says]\n{first['content']}",
+    }]
+    api_messages.extend(messages[1:])
+    return api_messages
+
+
+def study_chat(
+    phase: str,
+    subject_name: str,
+    messages: list[dict],
+    subject_memory: str | None = None,
+    recent_summaries: list[str] | None = None,
+) -> str:
+    """Send a study-session turn to the tutor and return its reply text.
+
+    Thin, untested wrapper around the Claude API; all prompt assembly lives in
+    the pure builders above.
+    """
+    api_messages = build_study_messages(
+        phase, subject_name, messages, subject_memory, recent_summaries
+    )
+    response = client.messages.create(
+        model="claude-haiku-4-5-20251001",
+        max_tokens=1024,
+        system=STUDY_SYSTEM_PROMPT,
+        messages=api_messages,
+    )
+    return response.content[0].text
+
+
 def build_context(course_name: str, topic_name: str | None, due_items: list[dict]) -> str:
     """Build the context message that tells the tutor what to focus on."""
     ctx = f"The student is studying: {course_name}"

@@ -6,7 +6,6 @@ let breakInterval = null;
 let subjectsCache = [];
 let activeSubjectId = null;
 let activeTopicId = null;
-let chatMessages = [];
 
 // ── Init ─────────────────────────────────────────────
 
@@ -76,7 +75,7 @@ function setupEventListeners() {
   // Course view
   document.getElementById('btn-add-topic').addEventListener('click', addTopic);
   document.getElementById('btn-study-course').addEventListener('click', () => {
-    if (activeSubjectId) startChatSession(activeSubjectId, null);
+    if (activeSubjectId) startStudySession(activeSubjectId);
   });
 
   // Topic view
@@ -88,11 +87,21 @@ function setupEventListeners() {
     document.getElementById('steps-group').classList.toggle('hidden', e.target.value !== 'WORKED_EXAMPLE');
   });
 
-  // Session (chat)
+  // Session (phased study chat + notes)
   document.getElementById('btn-end-session').addEventListener('click', endSessionEarly);
   document.getElementById('btn-go-home').addEventListener('click', () => showView('study'));
   document.getElementById('btn-skip-break').addEventListener('click', endBreak);
   document.getElementById('btn-send').addEventListener('click', sendMessage);
+  document.getElementById('btn-start-focus').addEventListener('click', startFocus);
+  document.getElementById('btn-finish-session').addEventListener('click', finishSession);
+
+  // Notes panel: debounced autosave, flush on blur, and a keepalive flush when
+  // the tab is hidden or closed so a pending edit isn't lost mid-debounce.
+  document.getElementById('notes-area').addEventListener('input', scheduleNotesSave);
+  document.getElementById('notes-area').addEventListener('blur', flushNotes);
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') flushNotes({ keepalive: true });
+  });
 
   // Send on Enter (Shift+Enter for newline)
   document.getElementById('chat-input').addEventListener('keydown', (e) => {
@@ -331,111 +340,104 @@ async function addItem() {
   await refreshTopicItems();
 }
 
-// ── CHAT SESSION ─────────────────────────────────────
+// ── STUDY SESSION (phased: level check → work ↔ break → wind-down) ──────
 
-async function startChatSession(subjectId, topicId) {
+const FOCUS_MS = 25 * 60 * 1000;
+const BREAK_MS = 5 * 60 * 1000;
+const REFLECT_MS = 5 * 60 * 1000;  // final minutes of a work interval
+
+async function startStudySession(subjectId) {
   const subj = subjectsCache.find(s => s.id === subjectId);
   if (!subj) return;
 
-  // Create a session on the backend
-  let sessionId = null;
-  try {
-    const queue = await api('POST', `/users/${USER_ID}/sessions`);
-    sessionId = queue.session_id;
-  } catch {
-    // Session creation is optional — chat still works without it
-  }
+  // Reset UI before the (LLM-backed) start round-trips.
+  document.getElementById('session-topic').textContent = subj.name;
+  document.getElementById('chat-messages').innerHTML = '';
+  document.getElementById('chat-input').value = '';
+  document.getElementById('notes-area').value = '';
+  document.getElementById('notes-status').textContent = '';
+  document.getElementById('session-done').classList.add('hidden');
+  document.getElementById('session-active').classList.remove('hidden');
+  document.getElementById('session-summary').classList.add('hidden');
+  document.getElementById('chat-input').disabled = true;
+  document.getElementById('btn-send').disabled = true;
 
   currentSession = {
     subjectId,
-    topicId,
-    sessionId,
-    startTime: Date.now(),
-    pomodoroEnd: Date.now() + 25 * 60 * 1000,
+    sessionId: null,
+    phase: 'level_check',
+    pomodoroEnd: null,
     pomodorosCompleted: 0,
+    intervalOpen: false,
+    reflectionAnnounced: false,
   };
 
-  chatMessages = [];
-
-  // Set up session UI
-  const topicLabel = topicId
-    ? (await getTopicName(subjectId, topicId))
-    : null;
-  document.getElementById('session-topic').textContent =
-    subj.name + (topicLabel ? ` > ${topicLabel}` : '');
-  document.getElementById('chat-messages').innerHTML = '';
-  document.getElementById('chat-input').value = '';
-  document.getElementById('session-done').classList.add('hidden');
-  document.getElementById('chat-input').disabled = false;
-  document.getElementById('btn-send').disabled = false;
-
+  setPhase('level_check');
   showView('session');
-  startTimer();
 
-  // Send initial message to get the tutor started
-  await sendInitialMessage();
-}
-
-async function getTopicName(subjectId, topicId) {
+  addChatBubble('thinking', 'Preparing your study session...');
   try {
-    const topics = await api('GET', `/users/${USER_ID}/subjects/${subjectId}/topics`);
-    const t = topics.find(t => t.id === topicId);
-    return t ? t.name : null;
-  } catch {
-    return null;
+    const session = await api('POST', `/users/${USER_ID}/study-sessions`, {
+      subject_id: subjectId,
+    });
+    currentSession.sessionId = session.id;
+    removeBubble('thinking');
+    // The start response includes the tutor's level-check opener.
+    (session.messages || []).forEach(m =>
+      addChatBubble(m.role === 'assistant' ? 'tutor' : 'user', m.content));
+    scrollChat();
+    document.getElementById('chat-input').disabled = false;
+    document.getElementById('btn-send').disabled = false;
+    document.getElementById('chat-input').focus();
+  } catch (e) {
+    removeBubble('thinking');
+    addChatBubble('tutor', 'Failed to start the session. Check your API key and try again.');
   }
 }
 
-async function sendInitialMessage() {
-  addChatBubble('thinking', 'Preparing your study session...');
+function setPhase(phase) {
+  if (!currentSession) return;
+  currentSession.phase = phase;
+  const badge = document.getElementById('phase-badge');
+  const label = {
+    level_check: 'Level check',
+    work: 'Work interval',
+    reflection: 'Reflection',
+    wind_down: 'Wind-down',
+  }[phase] || phase;
+  badge.textContent = label;
+  badge.className = 'phase-badge' + (phase === 'reflection' ? ' reflection'
+    : phase === 'wind_down' ? ' wind-down' : '');
 
-  try {
-    const res = await api('POST', `/users/${USER_ID}/chat`, {
-      subject_id: currentSession.subjectId,
-      topic_id: currentSession.topicId,
-      session_id: currentSession.sessionId,
-      messages: [],
-    });
-
-    removeBubble('thinking');
-    chatMessages.push({ role: 'assistant', content: res.reply });
-    addChatBubble('tutor', res.reply);
-    scrollChat();
-  } catch (e) {
-    removeBubble('thinking');
-    addChatBubble('tutor', 'Failed to connect to the tutor. Check your API key and try again.');
+  // The level check is untimed and gates the focus timer.
+  const gate = document.getElementById('level-check-gate');
+  gate.classList.toggle('hidden', phase !== 'level_check');
+  if (phase === 'level_check') {
+    const timer = document.getElementById('session-timer');
+    timer.textContent = '--:--';
+    timer.className = 'timer idle';
   }
 }
 
 async function sendMessage() {
   const input = document.getElementById('chat-input');
   const text = input.value.trim();
-  if (!text) return;
-  if (!currentSession) return;
+  if (!text || !currentSession || !currentSession.sessionId) return;
 
   input.value = '';
   input.style.height = 'auto';
-
-  // Add user message
-  chatMessages.push({ role: 'user', content: text });
   addChatBubble('user', text);
   scrollChat();
 
-  // Disable input while waiting
   input.disabled = true;
   document.getElementById('btn-send').disabled = true;
   addChatBubble('thinking', 'Thinking...');
 
   try {
-    const res = await api('POST', `/users/${USER_ID}/chat`, {
-      subject_id: currentSession.subjectId,
-      topic_id: currentSession.topicId,
-      session_id: currentSession.sessionId,
-      messages: chatMessages,
-    });
-
+    const res = await api('POST',
+      `/users/${USER_ID}/study-sessions/${currentSession.sessionId}/messages`,
+      { phase: currentSession.phase, content: text });
     removeBubble('thinking');
-    chatMessages.push({ role: 'assistant', content: res.reply });
     addChatBubble('tutor', res.reply);
     scrollChat();
   } catch (e) {
@@ -446,6 +448,35 @@ async function sendMessage() {
   input.disabled = false;
   document.getElementById('btn-send').disabled = false;
   input.focus();
+}
+
+// ── Notes autosave ───────────────────────────────────
+
+let notesTimer = null;
+
+function scheduleNotesSave() {
+  document.getElementById('notes-status').textContent = 'Saving...';
+  clearTimeout(notesTimer);
+  notesTimer = setTimeout(flushNotes, 800);
+}
+
+async function flushNotes({ keepalive = false } = {}) {
+  clearTimeout(notesTimer);
+  if (!currentSession || !currentSession.sessionId) return;
+  const notes = document.getElementById('notes-area').value;
+  const path = `/users/${USER_ID}/study-sessions/${currentSession.sessionId}/notes`;
+  try {
+    // keepalive lets the write complete even as the tab is unloading.
+    await fetch(path, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ notes }),
+      keepalive,
+    });
+    document.getElementById('notes-status').textContent = 'Saved';
+  } catch {
+    document.getElementById('notes-status').textContent = 'Not saved — will retry';
+  }
 }
 
 function addChatBubble(type, text) {
@@ -467,7 +498,37 @@ function scrollChat() {
   container.scrollTop = container.scrollHeight;
 }
 
-// ── Timer & Breaks ───────────────────────────────────
+// ── Timer, intervals & breaks ────────────────────────
+
+// The level check gates the timer: the focus clock only starts here.
+async function startFocus() {
+  if (!currentSession) return;
+  await beginInterval();
+}
+
+async function beginInterval() {
+  if (!currentSession) return;
+  try {
+    await api('POST',
+      `/users/${USER_ID}/study-sessions/${currentSession.sessionId}/interval/start`);
+    currentSession.intervalOpen = true;
+  } catch {
+    // Already open, or a transient error — keep the timer running regardless.
+  }
+  currentSession.reflectionAnnounced = false;
+  currentSession.pomodoroEnd = Date.now() + FOCUS_MS;
+  setPhase('work');
+  startTimer();
+}
+
+async function endOpenInterval() {
+  if (!currentSession || !currentSession.intervalOpen) return;
+  try {
+    await api('POST',
+      `/users/${USER_ID}/study-sessions/${currentSession.sessionId}/interval/end`);
+  } catch {}
+  currentSession.intervalOpen = false;
+}
 
 function startTimer() {
   clearInterval(timerInterval);
@@ -482,20 +543,34 @@ function updateTimer() {
   const secs = Math.floor((remaining % 60000) / 1000);
   const el = document.getElementById('session-timer');
   el.textContent = `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+  el.classList.toggle('warning', remaining <= REFLECT_MS);
+  el.classList.remove('idle');
 
-  if (remaining <= 5 * 60 * 1000) el.classList.add('warning');
-  else el.classList.remove('warning');
+  // The closing minutes of a work interval are the reflection.
+  if (remaining <= REFLECT_MS && currentSession.phase === 'work'
+      && !currentSession.reflectionAnnounced) {
+    currentSession.reflectionAnnounced = true;
+    setPhase('reflection');
+    addChatBubble('system',
+      'Reflection time — recap what you just learned. The tutor will probe, not correct.');
+    scrollChat();
+  }
 
   if (remaining === 0) {
     clearInterval(timerInterval);
-    startBreak();
+    onIntervalComplete();
   }
+}
+
+async function onIntervalComplete() {
+  await endOpenInterval();
+  startBreak();
 }
 
 function startBreak() {
   const overlay = document.getElementById('break-overlay');
   overlay.classList.add('active');
-  let breakEnd = Date.now() + 5 * 60 * 1000;
+  let breakEnd = Date.now() + BREAK_MS;
 
   clearInterval(breakInterval);
   breakInterval = setInterval(() => {
@@ -508,40 +583,54 @@ function startBreak() {
   }, 1000);
 }
 
-function endBreak() {
+async function endBreak() {
   clearInterval(breakInterval);
   document.getElementById('break-overlay').classList.remove('active');
   if (!currentSession) return;
   currentSession.pomodorosCompleted = (currentSession.pomodorosCompleted || 0) + 1;
-  currentSession.pomodoroEnd = Date.now() + 25 * 60 * 1000;
-  startTimer();
+  await beginInterval();  // next work interval
 }
 
+// End the session: stop timers, close any open interval, then capture the
+// user's wind-down recap before finishing on the server.
 async function endSessionEarly() {
   if (!currentSession) return;
   clearInterval(timerInterval);
+  clearInterval(breakInterval);
+  document.getElementById('break-overlay').classList.remove('active');
 
-  // End session on backend
-  if (currentSession.sessionId) {
-    try {
-      await api('POST', `/users/${USER_ID}/sessions/${currentSession.sessionId}/end`);
-    } catch {}
-  }
+  await flushNotes();
+  await endOpenInterval();
 
-  const elapsed = Math.round((Date.now() - currentSession.startTime) / 60000);
-  const msgCount = chatMessages.filter(m => m.role === 'user').length;
-
-  // Show summary
-  document.getElementById('chat-input').disabled = true;
-  document.getElementById('btn-send').disabled = true;
+  setPhase('wind_down');
+  document.getElementById('session-active').classList.add('hidden');
   document.getElementById('session-done').classList.remove('hidden');
-  document.getElementById('session-summary').innerHTML = `
-    <div class="summary-stat"><span>Time studied</span><span class="val">${elapsed} min</span></div>
-    <div class="summary-stat"><span>Messages exchanged</span><span class="val">${chatMessages.length}</span></div>
-    <div class="summary-stat"><span>Your responses</span><span class="val">${msgCount}</span></div>
+  document.getElementById('recap-area').focus();
+}
+
+async function finishSession() {
+  if (!currentSession) return;
+  const recap = document.getElementById('recap-area').value.trim();
+  document.getElementById('btn-finish-session').disabled = true;
+
+  let session = null;
+  try {
+    session = await api('POST',
+      `/users/${USER_ID}/study-sessions/${currentSession.sessionId}/end`,
+      { wind_down_recap: recap });
+  } catch {}
+
+  const minutes = session ? Math.round(session.work_seconds / 60) : 0;
+  const replies = session
+    ? session.messages.filter(m => m.role === 'user').length : 0;
+  const summary = document.getElementById('session-summary');
+  summary.innerHTML = `
+    <div class="summary-stat"><span>Focused time</span><span class="val">${minutes} min</span></div>
+    <div class="summary-stat"><span>Your responses</span><span class="val">${replies}</span></div>
     <div class="summary-stat"><span>Pomodoros</span><span class="val">${currentSession.pomodorosCompleted || 0}</span></div>
   `;
-
+  summary.classList.remove('hidden');
+  document.getElementById('btn-finish-session').disabled = false;
   currentSession = null;
 }
 
