@@ -150,6 +150,136 @@ class SessionOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
+# ── Study session (phased encoding mode, ADR-0004) ───────────────────────
+
+class StudySessionStart(BaseModel):
+    subject_id: int
+
+
+class StudyMessageOut(BaseModel):
+    role: str
+    content: str
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class StudySessionOut(BaseModel):
+    id: int
+    subject_id: int
+    started_at: datetime
+    ended_at: datetime | None
+    work_seconds: int
+    notes: str
+    wind_down_recap: str
+    summary: str | None = None
+    messages: list[StudyMessageOut]
+
+    model_config = {"from_attributes": True}
+
+
+class StudyChatRequest(BaseModel):
+    phase: str
+    content: str
+
+
+class StudyChatReply(BaseModel):
+    reply: str
+
+
+class StudyNotesUpdate(BaseModel):
+    notes: str
+
+
+class StudyEndRequest(BaseModel):
+    wind_down_recap: str = ""
+
+
+# ── Card drafts, classification, subject memory, summaries (ADR-0004) ────
+
+class CardDraft(BaseModel):
+    front: str
+    back: str
+    type: ItemType
+
+
+class CardDraftList(BaseModel):
+    drafts: list[CardDraft]
+
+
+class ClassifiedItemCreate(BaseModel):
+    """A hand-written item / accepted draft to be filed into a topic by
+    classification. front/back stored verbatim; type optional (suggested if
+    omitted)."""
+    front: str
+    back: str = ""
+    type: ItemType | None = None
+    worked_steps: list[str] | None = None
+
+
+class SubjectMemoryOut(BaseModel):
+    subject_id: int
+    content: str
+
+
+class SessionSummaryOut(BaseModel):
+    id: int
+    started_at: datetime
+    summary: str | None
+
+    model_config = {"from_attributes": True}
+
+
+# ── Review sessions (ADR-0004: retrieval-practice mode) ──────────────────
+
+class ReviewSessionStart(BaseModel):
+    subject_id: int | None = None
+
+
+class CommentaryIn(BaseModel):
+    item_id: int
+    typed_answer: str
+
+
+class CommentaryOut(BaseModel):
+    commentary: str
+    answer: str  # canonical answer, revealed after the attempt
+    worked_steps: list[str] | None = None
+
+
+class RateIn(BaseModel):
+    item_id: int
+    rating: Rating
+    typed_answer: str | None = None
+    commentary: str | None = None
+    response_ms: int | None = None
+
+
+class ReviewOut(BaseModel):
+    id: int
+    item_id: int
+    rating_given: Rating
+    predicted_recall: float | None
+    was_correct: bool
+    response_ms: int | None
+    reviewed_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+# ── Time stats (ADR-0004, stories 32-34) ─────────────────────────────────
+
+class HeatmapDay(BaseModel):
+    date: str  # UTC "YYYY-MM-DD"
+    minutes: int
+
+
+class StatsOut(BaseModel):
+    hours_studied: float
+    streak_days: int
+    heatmap: list[HeatmapDay]
+
+
 # ── Calibration insights ─────────────────────────────────────────────────
 
 class CalibrationBin(BaseModel):

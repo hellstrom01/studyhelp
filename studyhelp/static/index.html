@@ -16,21 +16,21 @@
     </div>
 
     <nav class="sidebar-nav">
-      <button class="nav-item active" data-view="study">
-        <span class="nav-icon">&#9654;</span> Study
+      <button class="nav-item active" data-view="home">
+        <span class="nav-icon">&#9654;</span> Home
       </button>
 
       <button class="nav-item" data-view="insights">
         <span class="nav-icon">&#9739;</span> Insights
       </button>
 
-      <div class="nav-section-label">Your Courses</div>
+      <div class="nav-section-label">Your Subjects</div>
       <div id="sidebar-subjects">
-        <div class="nav-empty">No courses yet</div>
+        <div class="nav-empty">No subjects yet</div>
       </div>
 
-      <button class="nav-item" data-view="add-course">
-        <span class="nav-icon">+</span> New Course
+      <button class="nav-item" data-view="add-subject">
+        <span class="nav-icon">+</span> New Subject
       </button>
     </nav>
   </aside>
@@ -38,35 +38,39 @@
   <!-- ══════════ MAIN CONTENT ══════════ -->
   <main class="main" id="main">
 
-    <!-- ── Study (default) ── -->
-    <div id="view-study" class="view active">
+    <!-- ── Home (default) ── -->
+    <div id="view-home" class="view active">
       <div class="view-header">
-        <h2>Study</h2>
-        <p class="subtitle" id="study-date"></p>
+        <h2>Home</h2>
+        <p class="subtitle" id="home-date"></p>
       </div>
 
       <div class="stats">
         <div class="stat">
+          <div class="number" id="stat-streak">-</div>
+          <div class="label">Day streak</div>
+        </div>
+        <div class="stat">
+          <div class="number" id="stat-hours">-</div>
+          <div class="label">Hours studied</div>
+        </div>
+        <div class="stat">
           <div class="number" id="stat-reviews">-</div>
           <div class="label">Reviews due</div>
         </div>
-        <div class="stat">
-          <div class="number" id="stat-new">-</div>
-          <div class="label">New items</div>
-        </div>
-        <div class="stat">
-          <div class="number" id="stat-calibration">-</div>
-          <div class="label">Calibration</div>
-        </div>
       </div>
 
-      <div id="study-subjects" class="study-subjects"></div>
+      <div class="card">
+        <h3>Consistency</h3>
+        <p class="subtitle">Each square is a day, shaded by minutes studied.</p>
+        <div class="chart" id="home-heatmap"></div>
+      </div>
 
-      <p id="study-empty" class="empty hidden">
-        Add a course to get started. Click "New Course" in the sidebar.
+      <div id="home-subjects" class="study-subjects"></div>
+
+      <p id="home-empty" class="empty hidden">
+        Add a subject to get started. Click "New Subject" in the sidebar.
       </p>
-
-      <p class="subtitle" style="margin-top: 16px;">Click a course to start a study session with your AI tutor.</p>
     </div>
 
     <!-- ── Insights (calibration) ── -->
@@ -77,14 +81,12 @@
       </div>
 
       <div class="insights-filter">
-        <label for="insights-course">Course</label>
-        <select id="insights-course"><option value="">All courses</option></select>
+        <label for="insights-subject">Subject</label>
+        <select id="insights-subject"><option value="">All subjects</option></select>
       </div>
 
-      <!-- Honest empty state when there's too little trustworthy data -->
       <div id="insights-empty" class="card empty hidden"></div>
 
-      <!-- Charts (hidden until threshold met) -->
       <div id="insights-charts" class="hidden">
         <div class="stats insights-headline">
           <div class="stat">
@@ -109,7 +111,7 @@
 
         <div class="card">
           <h3>Calibration error over time</h3>
-          <p class="subtitle">Average gap between predicted and actual recall, per day. Lower is better &mdash; a falling line means your self-assessment is getting sharper.</p>
+          <p class="subtitle">Average gap between predicted and actual recall, per day. Lower is better.</p>
           <div class="chart" id="cal-trend"></div>
         </div>
       </div>
@@ -117,44 +119,41 @@
       <p class="insights-coverage subtitle" id="insights-coverage"></p>
     </div>
 
-    <!-- ── Course detail ── -->
-    <div id="view-course" class="view">
+    <!-- ── Subject detail ── -->
+    <div id="view-subject" class="view">
       <div class="view-header">
-        <h2 id="course-title">Course</h2>
-        <p class="subtitle" id="course-type"></p>
+        <h2 id="subject-title">Subject</h2>
+        <p class="subtitle" id="subject-type"></p>
       </div>
 
-      <button class="btn btn-primary" id="btn-study-course" style="margin-bottom: 20px;">
-        Study this course
-      </button>
+      <div class="subject-actions">
+        <button class="btn btn-primary" id="btn-study-subject">Study</button>
+        <button class="btn btn-secondary" id="btn-review-subject">
+          Review <span id="subject-due-badge" class="badge hidden">0</span>
+        </button>
+      </div>
+      <p class="subtitle" id="subject-due-line"></p>
+
+      <div class="card">
+        <h3>Recent sessions</h3>
+        <div id="subject-summaries"><p class="empty">No study sessions yet.</p></div>
+      </div>
+
+      <div class="card">
+        <h3>What the tutor remembers <button class="btn btn-ghost btn-sm" id="btn-toggle-memory">Show</button></h3>
+        <pre id="subject-memory" class="memory-blob hidden"></pre>
+      </div>
 
       <h3 style="margin-bottom: 12px;">Topics</h3>
-      <div id="course-topics"></div>
+      <div id="subject-topics"></div>
 
       <div class="card">
-        <h3>Add Topic</h3>
-        <div class="inline-form">
-          <input type="text" id="topic-name" placeholder="e.g. Integration by parts">
-          <button class="btn btn-ghost btn-sm" id="btn-add-topic">Add</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- ── Topic detail (add items) ── -->
-    <div id="view-topic" class="view">
-      <div class="view-header">
-        <button class="btn-back" id="btn-back-to-course">&larr; Back</button>
-        <h2 id="topic-title">Topic</h2>
-        <p class="subtitle" id="topic-item-count"></p>
-      </div>
-
-      <div id="topic-items-list"></div>
-
-      <div class="card">
-        <h3>Add Study Item</h3>
+        <h3>Add an item</h3>
+        <p class="subtitle">Write it in your own words &mdash; we'll file it into a topic for you.</p>
         <div class="form-group">
-          <label>Item Type</label>
+          <label>Type (optional &mdash; we'll suggest one)</label>
           <select id="item-type">
+            <option value="">Auto-detect</option>
             <option value="CONCEPT_QA">Concept Q&A</option>
             <option value="THEOREM_TRIGGER">Theorem / Rule + Trigger</option>
             <option value="WORKED_EXAMPLE">Worked Example</option>
@@ -173,59 +172,134 @@
         </div>
         <div class="form-group hidden" id="steps-group">
           <label>Worked Steps (one per line)</label>
-          <textarea id="item-steps" placeholder="Step 1: ...&#10;Step 2: ...&#10;Step 3: ..." rows="4"></textarea>
+          <textarea id="item-steps" placeholder="Step 1: ...&#10;Step 2: ..." rows="4"></textarea>
         </div>
         <button class="btn btn-primary" id="btn-add-item">Add Item</button>
       </div>
     </div>
 
-    <!-- ── New Course ── -->
-    <div id="view-add-course" class="view">
+    <!-- ── New Subject ── -->
+    <div id="view-add-subject" class="view">
       <div class="view-header">
-        <h2>New Course</h2>
+        <h2>New Subject</h2>
         <p class="subtitle">Add a subject you're studying</p>
       </div>
 
       <div class="card">
         <div class="form-group">
-          <label>Course Name</label>
+          <label>Subject Name</label>
           <input type="text" id="subject-name" placeholder="e.g. Calculus II, Algorithms, Physics 101">
         </div>
         <div class="form-group">
           <label>Type</label>
-          <select id="subject-type">
+          <select id="subject-type-select">
             <option value="MATH">Math</option>
             <option value="CS">Computer Science</option>
             <option value="SCIENCE">Science</option>
             <option value="OTHER">Other</option>
           </select>
         </div>
-        <button class="btn btn-primary" id="btn-add-subject">Create Course</button>
+        <button class="btn btn-primary" id="btn-add-subject">Create Subject</button>
       </div>
     </div>
 
-    <!-- ── Study session (chat-based, hides sidebar) ── -->
-    <div id="view-session" class="view">
+    <!-- ── Study session (chat + notes, hides sidebar) ── -->
+    <div id="view-study" class="view">
       <div class="session-header">
-        <span class="session-topic" id="session-topic"></span>
-        <div class="timer" id="session-timer">25:00</div>
-        <button class="btn btn-ghost btn-sm" id="btn-end-session">End Session</button>
+        <span class="session-topic" id="study-subject-label"></span>
+        <span class="phase-pill" id="study-phase">Level check</span>
+        <div class="timer" id="study-timer">--:--</div>
+        <button class="btn btn-ghost btn-sm" id="btn-end-study">End Session</button>
       </div>
 
-      <div class="chat-container" id="chat-container">
-        <div class="chat-messages" id="chat-messages"></div>
+      <div class="study-body" id="study-body">
+        <div class="chat-column">
+          <div class="chat-container" id="study-chat-container">
+            <div class="chat-messages" id="study-chat-messages"></div>
+          </div>
+          <div class="chat-input-area">
+            <textarea class="chat-input" id="study-chat-input"
+              placeholder="Type your reply..." rows="2"></textarea>
+            <button class="btn btn-primary chat-send" id="btn-study-send">Send</button>
+          </div>
+          <div class="levelcheck-bar" id="levelcheck-bar">
+            <span>Level check &mdash; the timer starts when you're ready.</span>
+            <button class="btn btn-primary btn-sm" id="btn-start-focus">Start focus timer</button>
+          </div>
+        </div>
+        <aside class="notes-panel">
+          <h4>Notes</h4>
+          <textarea id="study-notes" placeholder="Capture your own understanding as you go..."></textarea>
+          <span class="notes-status" id="notes-status"></span>
+        </aside>
       </div>
 
-      <div class="chat-input-area">
-        <textarea class="chat-input" id="chat-input"
-          placeholder="Type your answer..." rows="2"></textarea>
-        <button class="btn btn-primary chat-send" id="btn-send">Send</button>
+      <!-- Wind-down + summary + drafts -->
+      <div id="study-winddown" class="hidden winddown">
+        <h2>Wind down</h2>
+        <p class="subtitle">In your own words, what did you learn this session?</p>
+        <textarea id="winddown-recap" rows="4" placeholder="Today I understood..."></textarea>
+        <button class="btn btn-primary" id="btn-finish-study">Finish &amp; summarize</button>
       </div>
 
-      <div id="session-done" class="hidden">
+      <div id="study-done" class="hidden">
         <h2>Session Complete</h2>
-        <div class="card" id="session-summary"></div>
-        <button class="btn btn-primary" id="btn-go-home">Back to Study</button>
+        <div class="card">
+          <h3>Summary</h3>
+          <p id="study-summary-text"></p>
+        </div>
+        <div class="card" id="drafts-card">
+          <h3>Suggested cards</h3>
+          <p class="subtitle">Edit or reject each before it enters your deck &mdash; nothing is reviewable without your approval.</p>
+          <div id="drafts-list"><p class="empty">Generating suggestions...</p></div>
+        </div>
+        <button class="btn btn-primary" id="btn-study-home">Back to Home</button>
+      </div>
+    </div>
+
+    <!-- ── Review session (typed answer → commentary → grade) ── -->
+    <div id="view-review" class="view">
+      <div class="session-header">
+        <span class="session-topic" id="review-subject-label"></span>
+        <span class="phase-pill" id="review-progress"></span>
+        <button class="btn btn-ghost btn-sm" id="btn-end-review">End Session</button>
+      </div>
+
+      <div class="review-body" id="review-body">
+        <div class="review-card">
+          <div class="review-type" id="review-item-type"></div>
+          <div class="review-front" id="review-front"></div>
+          <div class="review-steps" id="review-steps"></div>
+
+          <div id="review-attempt-area">
+            <textarea id="review-answer" rows="4" placeholder="Type your answer from memory..."></textarea>
+            <button class="btn btn-primary" id="btn-submit-answer">Submit answer</button>
+          </div>
+
+          <div id="review-reveal-area" class="hidden">
+            <div class="reveal-block">
+              <h4>Feedback</h4>
+              <p id="review-commentary"></p>
+            </div>
+            <div class="reveal-block">
+              <h4>Answer</h4>
+              <p id="review-answer-reveal"></p>
+            </div>
+            <div class="grade-prompt">How did you do?</div>
+            <div class="grade-buttons">
+              <button class="btn grade grade-again" data-rating="AGAIN">Forgot</button>
+              <button class="btn grade grade-hard" data-rating="HARD">Struggled</button>
+              <button class="btn grade grade-good" data-rating="GOOD">Got it</button>
+              <button class="btn grade grade-easy" data-rating="EASY">Easy</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div id="review-done" class="hidden">
+        <h2>Review Complete</h2>
+        <div class="card" id="review-summary"></div>
+        <button class="btn btn-primary" id="btn-review-home">Back to Home</button>
       </div>
     </div>
 

@@ -648,3 +648,187 @@ h3 { font-size: 16px; font-weight: 600; margin-bottom: 12px; }
   from { opacity: 0; transform: translateX(-50%) translateY(10px); }
   to { opacity: 1; transform: translateX(-50%) translateY(0); }
 }
+
+/* ── Study & review separation (ADR-0004) ─────────────── */
+
+.btn-secondary {
+  background: var(--surface2);
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+.btn-secondary:hover { background: var(--border); }
+
+.badge {
+  display: inline-block;
+  min-width: 20px;
+  padding: 1px 7px;
+  margin-left: 6px;
+  border-radius: 999px;
+  background: var(--orange);
+  color: #1a1200;
+  font-size: 12px;
+  font-weight: 700;
+  vertical-align: middle;
+}
+
+.subject-actions { display: flex; gap: 12px; margin-bottom: 8px; }
+
+.phase-pill {
+  padding: 3px 12px;
+  border-radius: 999px;
+  background: var(--accent-dim);
+  color: var(--accent-hover);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.memory-blob {
+  white-space: pre-wrap;
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--text-dim);
+  margin-top: 10px;
+  padding: 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.summary-row { display: flex; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--border); }
+.summary-row:last-child { border-bottom: none; }
+.summary-date { color: var(--text-dim); font-size: 13px; flex-shrink: 0; width: 60px; }
+.summary-text { font-size: 14px; line-height: 1.5; }
+
+/* Study session: chat column + notes panel side by side */
+.study-body { display: flex; gap: 20px; }
+.chat-column { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+.notes-panel {
+  width: 300px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+}
+.notes-panel h4 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-dim); margin-bottom: 8px; }
+.notes-panel textarea {
+  flex: 1;
+  min-height: 300px;
+  padding: 12px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 1.6;
+  resize: none;
+}
+.notes-panel textarea:focus { outline: none; border-color: var(--accent); }
+.notes-status { font-size: 12px; color: var(--text-dim); margin-top: 6px; height: 14px; }
+
+.chat-msg.system {
+  align-self: center;
+  background: var(--accent-dim);
+  color: var(--accent-hover);
+  font-size: 13px;
+  border: none;
+  text-align: center;
+}
+
+.levelcheck-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 12px;
+  padding: 12px 16px;
+  background: var(--accent-dim);
+  border-radius: 10px;
+  font-size: 14px;
+  color: var(--text-dim);
+}
+
+.winddown textarea, #winddown-recap {
+  width: 100%;
+  padding: 12px 16px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 15px;
+  line-height: 1.6;
+  resize: vertical;
+  margin-bottom: 16px;
+}
+
+/* Card drafts */
+.draft { border: 1px solid var(--border); border-radius: 10px; padding: 14px; margin-bottom: 12px; }
+.draft.accepted { opacity: 0.6; }
+.draft textarea {
+  width: 100%;
+  padding: 8px 12px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 14px;
+  resize: vertical;
+}
+.draft-actions { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+.draft-type { font-size: 12px; color: var(--text-dim); margin-right: auto; }
+
+/* Review session */
+.review-body { display: flex; justify-content: center; }
+.review-card {
+  width: 100%;
+  max-width: 640px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 28px;
+}
+.review-type { font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-dim); margin-bottom: 12px; }
+.review-front { font-size: 19px; line-height: 1.5; margin-bottom: 16px; }
+.review-steps .step { font-size: 14px; color: var(--text-dim); padding: 4px 0; }
+#review-answer {
+  width: 100%;
+  padding: 12px 16px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 15px;
+  line-height: 1.6;
+  resize: vertical;
+  margin-bottom: 12px;
+}
+#review-answer:focus { outline: none; border-color: var(--accent); }
+.reveal-block { margin-bottom: 16px; }
+.reveal-block h4 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-dim); margin-bottom: 6px; }
+.reveal-block p { font-size: 15px; line-height: 1.6; }
+.grade-prompt { font-size: 14px; color: var(--text-dim); margin: 8px 0; text-align: center; }
+.grade-buttons { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+.btn.grade { color: #fff; font-weight: 600; }
+.grade-again { background: var(--red); }
+.grade-hard { background: var(--orange); }
+.grade-good { background: var(--green); color: #06280f; }
+.grade-easy { background: var(--accent); }
+.btn.grade:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* Consistency heatmap */
+.heat-svg { width: 100%; height: auto; max-width: 100%; display: block; }
+.heat { stroke: var(--bg); stroke-width: 1; }
+.heat-0 { fill: var(--surface2); }
+.heat-1 { fill: rgba(108, 140, 255, 0.30); }
+.heat-2 { fill: rgba(108, 140, 255, 0.55); }
+.heat-3 { fill: rgba(108, 140, 255, 0.78); }
+.heat-4 { fill: var(--accent); }
+
+@media (max-width: 720px) {
+  .study-body { flex-direction: column; }
+  .notes-panel { width: 100%; }
+  .notes-panel textarea { min-height: 120px; }
+}
