@@ -10,9 +10,15 @@ written from here.
 
 from datetime import datetime, timezone
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .models import StudyChatMessage, StudySession, Subject, User
+from .models import StudyChatMessage, StudySession, Subject, SubjectMemory, User
+
+# Subject memory is a sharp picture, not a growing log: capped so it stays small
+# enough to prepend to every tutor call. Prompted as a budget, enforced here by
+# truncation as a hard guard.
+MEMORY_CHAR_CAP = 4000
 
 
 def _aware(dt: datetime) -> datetime:
@@ -105,3 +111,61 @@ def end_study_session(
     session.ended_at = now
     db.commit()
     return session
+
+
+# ── Session summary + subject memory (ADR-0004, stories 13-17) ───────────
+
+def store_summary(db: Session, session_id: int, summary: str) -> StudySession:
+    """Persist the LLM-written summary on a (usually just-ended) session."""
+    session = _get_session(db, session_id)
+    session.summary = summary
+    db.commit()
+    return session
+
+
+def recent_summaries(
+    db: Session, user_id: int, subject_id: int, limit: int = 5
+) -> list[StudySession]:
+    """Finished study sessions for a subject, newest first — what was covered
+    lately (only those that have a summary)."""
+    return list(db.scalars(
+        select(StudySession)
+        .where(
+            StudySession.user_id == user_id,
+            StudySession.subject_id == subject_id,
+            StudySession.summary.is_not(None),
+        )
+        .order_by(StudySession.started_at.desc())
+        .limit(limit)
+    ))
+
+
+def get_subject_memory(db: Session, user_id: int, subject_id: int) -> str:
+    """The tutor's current running notes on the student for this subject, or ""."""
+    mem = _find_memory(db, user_id, subject_id)
+    return mem.content if mem else ""
+
+
+def rewrite_subject_memory(
+    db: Session, user_id: int, subject_id: int, new_memory: str,
+    now: datetime | None = None,
+) -> SubjectMemory:
+    """Replace the subject memory wholesale (never append), capped in length."""
+    now = now or datetime.now(timezone.utc)
+    mem = _find_memory(db, user_id, subject_id)
+    if mem is None:
+        mem = SubjectMemory(user_id=user_id, subject_id=subject_id)
+        db.add(mem)
+    mem.content = new_memory[:MEMORY_CHAR_CAP]
+    mem.updated_at = now
+    db.commit()
+    return mem
+
+
+def _find_memory(db: Session, user_id: int, subject_id: int) -> SubjectMemory | None:
+    return db.scalar(
+        select(SubjectMemory).where(
+            SubjectMemory.user_id == user_id,
+            SubjectMemory.subject_id == subject_id,
+        )
+    )

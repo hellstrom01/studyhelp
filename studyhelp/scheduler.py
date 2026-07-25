@@ -27,14 +27,21 @@ _STATE_TO_FSRS: dict[FSRSState, State] = {
 _STATE_FROM_FSRS: dict[State, FSRSState] = {v: k for k, v in _STATE_TO_FSRS.items()}
 
 
+def _as_utc(dt: datetime | None) -> datetime | None:
+    """SQLite hands back naive datetimes; py-fsrs requires aware UTC ones."""
+    if dt is not None and dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt
+
+
 def _card_from_item(item: Item) -> Card:
     """Reconstruct a py-fsrs Card from an Item's persisted FSRS fields."""
     card = Card()
     if item.fsrs_state != FSRSState.NEW and item.fsrs_last_review is not None:
         card.stability = item.fsrs_stability
         card.difficulty = item.fsrs_difficulty
-        card.due = item.fsrs_due or datetime.now(timezone.utc)
-        card.last_review = item.fsrs_last_review
+        card.due = _as_utc(item.fsrs_due) or datetime.now(timezone.utc)
+        card.last_review = _as_utc(item.fsrs_last_review)
         card.step = item.fsrs_step
         card.state = _STATE_TO_FSRS.get(item.fsrs_state, State.Learning)
     return card

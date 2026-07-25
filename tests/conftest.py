@@ -5,7 +5,7 @@ can be tested against real ORM rows without touching the web or LLM layers.
 This is the prior art for future tests (see the calibration dashboard spec).
 """
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import pytest
 from sqlalchemy import create_engine
@@ -63,9 +63,35 @@ class Seeder:
         item = Item(topic_id=topic.id, type=ItemType.CONCEPT_QA, front="q", back="a")
         self.db.add(item)
         self.db.flush()
-        # stash the item so add() can hang reviews off this subject
+        # stash the topic/item so helpers can hang rows off this subject
+        subj._seed_topic_id = topic.id
         subj._seed_item_id = item.id
         return subj
+
+    def topic(self, subject, name="Topic 2"):
+        topic = Topic(subject_id=subject.id, name=name)
+        self.db.add(topic)
+        self.db.flush()
+        return topic
+
+    def item(self, subject, type=ItemType.CONCEPT_QA, front="q", back="a",
+             state=None, due=None, stability=None, steps=None, topic_id=None):
+        """Add an item to the subject's seed topic, optionally with FSRS state
+        (state/due/stability) so queue-building tests can control what is due."""
+        from studyhelp.models import FSRSState
+        item = Item(
+            topic_id=topic_id or subject._seed_topic_id,
+            type=type, front=front, back=back, worked_steps=steps,
+        )
+        if state is not None:
+            item.fsrs_state = state
+            item.fsrs_stability = stability if stability is not None else 5.0
+            item.fsrs_difficulty = 5.0
+            item.fsrs_due = due or BASE_DAY
+            item.fsrs_last_review = (due or BASE_DAY) - timedelta(days=1)
+        self.db.add(item)
+        self.db.flush()
+        return item
 
     def add(self, subject, predicted, correct, source=ReviewSource.CARD, when=None,
             attribution_exact=None):

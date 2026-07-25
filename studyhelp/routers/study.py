@@ -11,9 +11,14 @@ written here.
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session as DBSession
 
+from ..classification import classify_and_file
 from ..database import get_db
 from ..models import StudySession
 from ..schemas import (
+    CardDraft,
+    CardDraftList,
+    ClassifiedItemCreate,
+    ItemOut,
     StudyChatReply,
     StudyChatRequest,
     StudyEndRequest,
@@ -25,12 +30,22 @@ from ..study import (
     append_message,
     end_interval,
     end_study_session,
+    get_subject_memory,
     get_transcript,
+    recent_summaries,
+    rewrite_subject_memory,
     save_notes,
     start_interval,
     start_study_session,
+    store_summary,
 )
-from ..tutor import STUDY_PHASES, study_chat
+from ..tutor import (
+    STUDY_PHASES,
+    classify_item,
+    generate_drafts,
+    generate_summary_and_memory,
+    study_chat,
+)
 
 router = APIRouter(prefix="/users/{user_id}/study-sessions", tags=["study"])
 
@@ -46,6 +61,11 @@ def _transcript_dicts(session: StudySession) -> list[dict]:
     return [{"role": m.role, "content": m.content} for m in session.messages]
 
 
+def _summaries_text(db: DBSession, user_id: int, subject_id: int) -> list[str]:
+    return [s.summary for s in recent_summaries(db, user_id, subject_id, limit=3)
+            if s.summary]
+
+
 @router.post("", response_model=StudySessionOut, status_code=201)
 def start(user_id: int, body: StudySessionStart, db: DBSession = Depends(get_db)):
     """Create a study session and generate the tutor's level-check opener."""
@@ -54,9 +74,12 @@ def start(user_id: int, body: StudySessionStart, db: DBSession = Depends(get_db)
     except ValueError as e:
         raise HTTPException(404, str(e))
 
+    memory = get_subject_memory(db, user_id, session.subject_id)
+    summaries = _summaries_text(db, user_id, session.subject_id)
     try:
         opener = study_chat(
-            phase="level_check", subject_name=session.subject.name, messages=[]
+            phase="level_check", subject_name=session.subject.name, messages=[],
+            subject_memory=memory, recent_summaries=summaries,
         )
     except Exception as e:
         raise HTTPException(502, f"LLM error: {e}")
@@ -77,12 +100,16 @@ def send_message(
 
     append_message(db, session.id, "user", body.content)
     transcript = _transcript_dicts(db.get(StudySession, session_id))
+    memory = get_subject_memory(db, user_id, session.subject_id)
+    summaries = _summaries_text(db, user_id, session.subject_id)
 
     try:
         reply = study_chat(
             phase=body.phase,
             subject_name=session.subject.name,
             messages=transcript,
+            subject_memory=memory,
+            recent_summaries=summaries,
         )
     except Exception as e:
         raise HTTPException(502, f"LLM error: {e}")
@@ -130,14 +157,54 @@ def put_notes(
 def end(
     user_id: int, session_id: int, body: StudyEndRequest, db: DBSession = Depends(get_db)
 ):
-    """End the session, crediting any open interval and storing the recap."""
-    _owned_session(db, user_id, session_id)
+    """End the session (crediting any open interval, storing the recap), then
+    write the LLM session summary and rewrite the subject memory (ADR-0004).
+    If the summary call fails the session still ends; the summary just stays
+    null and the student can review the transcript."""
+    session = _owned_session(db, user_id, session_id)
     try:
         session = end_study_session(db, session_id, wind_down_recap=body.wind_down_recap)
     except ValueError as e:
         raise HTTPException(409, str(e))
+
+    transcript = "\n".join(f"{m.role}: {m.content}" for m in session.messages)
+    prior_memory = get_subject_memory(db, user_id, session.subject_id)
+    try:
+        result = generate_summary_and_memory(
+            transcript, session.notes, session.wind_down_recap, prior_memory
+        )
+        store_summary(db, session_id, result["summary"])
+        rewrite_subject_memory(db, user_id, session.subject_id, result["memory"])
+    except Exception:
+        pass  # session is ended regardless; summary/memory are best-effort
+
     db.refresh(session)
     return session
+
+
+@router.post("/{session_id}/drafts", response_model=CardDraftList)
+def drafts(user_id: int, session_id: int, db: DBSession = Depends(get_db)):
+    """Propose card drafts from the session's notes and summary (ephemeral)."""
+    session = _owned_session(db, user_id, session_id)
+    try:
+        proposed = generate_drafts(session.notes, session.summary or "")
+    except Exception as e:
+        raise HTTPException(502, f"LLM error: {e}")
+    return CardDraftList(drafts=[CardDraft(**d) for d in proposed])
+
+
+@router.post("/{session_id}/drafts/accept", response_model=ItemOut, status_code=201)
+def accept_draft(
+    user_id: int, session_id: int, body: ClassifiedItemCreate,
+    db: DBSession = Depends(get_db),
+):
+    """Accept an (edited) draft: classify it into a topic and add it to the deck."""
+    session = _owned_session(db, user_id, session_id)
+    item = classify_and_file(
+        db, session.subject_id, body.front, body.back, classify_item,
+        item_type=body.type, worked_steps=body.worked_steps,
+    )
+    return ItemOut.from_item(item)
 
 
 @router.get("/{session_id}", response_model=StudySessionOut)

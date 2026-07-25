@@ -168,6 +168,13 @@ class Review(Base):
     # stay excluded. Carries the trust decision; `source` still records provenance.
     # See ADR-0003.
     attribution_exact: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    # Review sessions (ADR-0004) are the only producer of new rows. These link
+    # the row to its review session and keep the typed attempt + LLM commentary.
+    review_session_id: Mapped[int | None] = mapped_column(
+        ForeignKey("review_sessions.id"), nullable=True
+    )
+    typed_answer: Mapped[str | None] = mapped_column(Text, nullable=True)
+    commentary: Mapped[str | None] = mapped_column(Text, nullable=True)
     reviewed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
     item: Mapped["Item"] = relationship(back_populates="reviews")
@@ -213,8 +220,11 @@ class StudySession(Base):
     interval_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     notes: Mapped[str] = mapped_column(Text, default="")
     # The user's own wind-down recap, captured when the session ends. Distinct
-    # from the LLM-written session summary (issue #9), which lands here later.
+    # from the LLM-written session summary below.
     wind_down_recap: Mapped[str] = mapped_column(Text, default="")
+    # LLM-written session summary, produced from transcript + notes + recap when
+    # the session ends (ADR-0004, stories 13-14). Null until the session ends.
+    summary: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     subject: Mapped["Subject"] = relationship()
     messages: Mapped[list["StudyChatMessage"]] = relationship(
@@ -234,6 +244,34 @@ class StudyChatMessage(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
     session: Mapped["StudySession"] = relationship(back_populates="messages")
+
+
+# ── Review session (ADR-0004: the only producer of new Review rows) ─────
+
+class ReviewSession(Base):
+    __tablename__ = "review_sessions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    items_reviewed: Mapped[int] = mapped_column(Integer, default=0)
+
+
+# ── Subject memory ───────────────────────────────────────────────────────
+
+class SubjectMemory(Base):
+    """The tutor's running private notes on the student for one subject: level,
+    gaps, misconceptions, topics covered. Rewritten wholesale after each study
+    session, never appended; capped in length."""
+
+    __tablename__ = "subject_memories"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    subject_id: Mapped[int] = mapped_column(ForeignKey("subjects.id"))
+    content: Mapped[str] = mapped_column(Text, default="")
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
 
 # ── ExplanationLog ───────────────────────────────────────────────────────

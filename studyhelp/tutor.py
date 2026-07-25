@@ -11,9 +11,14 @@ from datetime import datetime, timezone
 from anthropic import Anthropic
 from dotenv import load_dotenv
 
+from .models import ItemType
+from .study import MEMORY_CHAR_CAP  # single source of truth for the memory budget
+
 load_dotenv()
 
 client = Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+
+MODEL = "claude-haiku-4-5-20251001"
 
 SYSTEM_PROMPT = """\
 You are a study tutor that forces active recall and deep understanding. You follow these rules strictly:
@@ -337,3 +342,177 @@ def parse_eval(response_text: str) -> tuple[str, dict | None]:
         except json.JSONDecodeError:
             return clean, None
     return response_text, None
+
+
+# ── Session summary + subject-memory rewrite (ADR-0004, stories 13-17) ────
+
+def build_summary_prompt(transcript: str, notes: str, recap: str,
+                         prior_memory: str = "") -> str:
+    """Prompt for the single end-of-session call that writes the session summary
+    and rewrites the subject memory."""
+    return (
+        "A study session just ended. Produce two things as JSON.\n\n"
+        f"Transcript:\n{transcript or '(none)'}\n\n"
+        f"Student's notes:\n{notes or '(none)'}\n\n"
+        f"Student's own wind-down recap:\n{recap or '(none)'}\n\n"
+        f"Your prior memory of this student:\n{prior_memory or '(none)'}\n\n"
+        "Return exactly one JSON object with two string keys:\n"
+        '  "summary": a short recap of what this session covered.\n'
+        '  "memory": your REWRITTEN running notes on this student for this '
+        "subject — their level, gaps, misconceptions, and topics covered. "
+        "Rewrite it wholesale from the prior memory plus this session; do not "
+        f"simply append. Keep it under {MEMORY_CHAR_CAP} characters.\n"
+    )
+
+
+def parse_summary(text: str) -> dict:
+    """Extract {"summary", "memory"} from the model's output. Malformed output
+    falls back to the whole text as the summary and an empty memory, so a bad
+    call never corrupts the stored subject memory."""
+    data = _extract_json(text)
+    if isinstance(data, dict):
+        return {"summary": _as_str(data.get("summary")),
+                "memory": _as_str(data.get("memory"))}
+    return {"summary": text.strip(), "memory": ""}
+
+
+def generate_summary_and_memory(
+    transcript: str, notes: str, recap: str, prior_memory: str = ""
+) -> dict:
+    prompt = build_summary_prompt(transcript, notes, recap, prior_memory)
+    response = client.messages.create(
+        model=MODEL, max_tokens=1500,
+        messages=[{"role": "user", "content": prompt}],
+    )
+    return parse_summary(response.content[0].text)
+
+
+# ── Card drafts (ADR-0004, stories 18-19) ────────────────────────────────
+
+def build_drafts_prompt(notes: str, summary: str) -> str:
+    types = ", ".join(t.value for t in ItemType)
+    return (
+        "From this study session's notes and summary, propose review cards the "
+        "student can add to their deck. Use their material; do not invent facts "
+        "they did not study.\n\n"
+        f"Notes:\n{notes or '(none)'}\n\n"
+        f"Summary:\n{summary or '(none)'}\n\n"
+        'Return one JSON object: {"drafts": [{"front": ..., "back": ..., '
+        '"type": ...}]}. front is the prompt, back is the answer, and type is '
+        f"one of: {types}. Propose at most 8 cards.\n"
+    )
+
+
+def parse_drafts(text: str) -> list[dict]:
+    """Extract proposed cards. Entries without a front are dropped; unknown types
+    default to CONCEPT_QA. Malformed output yields an empty list."""
+    data = _extract_json(text)
+    if not isinstance(data, dict):
+        return []
+    raw = data.get("drafts")
+    if not isinstance(raw, list):
+        return []
+    drafts = []
+    for entry in raw:
+        if not isinstance(entry, dict):
+            continue
+        front = _as_str(entry.get("front")).strip()
+        if not front:
+            continue
+        drafts.append({
+            "front": front,
+            "back": _as_str(entry.get("back")).strip(),
+            "type": _coerce_type(entry.get("type")),
+        })
+    return drafts
+
+
+def generate_drafts(notes: str, summary: str) -> list[dict]:
+    prompt = build_drafts_prompt(notes, summary)
+    response = client.messages.create(
+        model=MODEL, max_tokens=1500,
+        messages=[{"role": "user", "content": prompt}],
+    )
+    return parse_drafts(response.content[0].text)
+
+
+# ── Classification (ADR-0004, stories 20-21) ─────────────────────────────
+
+def build_classification_prompt(
+    front: str, back: str, existing_topics: list[str]
+) -> str:
+    types = ", ".join(t.value for t in ItemType)
+    topics = ", ".join(existing_topics) if existing_topics else "(none yet)"
+    return (
+        "File this study item into a topic. Do NOT rewrite the item's text.\n\n"
+        f"Item prompt: {front}\n"
+        f"Item answer: {back or '(none)'}\n\n"
+        f"Existing topics in this subject: {topics}\n\n"
+        "Pick an existing topic if one fits; otherwise name a new, concise "
+        'topic. Return one JSON object: {"topic": "...", "type": "..."} where '
+        f"type is one of: {types}.\n"
+    )
+
+
+def parse_classification(text: str) -> dict:
+    """Extract {"topic", "type"}. Topic is "" and type None when unparseable,
+    letting the caller fall back to a default topic."""
+    data = _extract_json(text)
+    if not isinstance(data, dict):
+        return {"topic": "", "type": None}
+    return {
+        "topic": _as_str(data.get("topic")).strip(),
+        "type": _coerce_type(data.get("type")) if data.get("type") is not None else None,
+    }
+
+
+def classify_item(front: str, back: str, existing_topics: list[str]) -> dict:
+    prompt = build_classification_prompt(front, back, existing_topics)
+    response = client.messages.create(
+        model=MODEL, max_tokens=200,
+        messages=[{"role": "user", "content": prompt}],
+    )
+    return parse_classification(response.content[0].text)
+
+
+# ── shared parsing helpers ───────────────────────────────────────────────
+
+def _extract_json(text: str):
+    """Best-effort: parse the first balanced JSON object in the text, tolerating
+    surrounding prose and ```json fences. Returns None if none parses."""
+    if not text:
+        return None
+    try:
+        return json.loads(text)
+    except (json.JSONDecodeError, TypeError):
+        pass
+    depth = 0
+    start = None
+    for i, ch in enumerate(text):
+        if ch == "{":
+            if depth == 0:
+                start = i
+            depth += 1
+        elif ch == "}":
+            if depth > 0:
+                depth -= 1
+                if depth == 0 and start is not None:
+                    try:
+                        return json.loads(text[start:i + 1])
+                    except json.JSONDecodeError:
+                        start = None
+    return None
+
+
+def _as_str(value) -> str:
+    return value if isinstance(value, str) else ("" if value is None else str(value))
+
+
+def _coerce_type(value) -> ItemType:
+    """Map a model-supplied type name onto ItemType, defaulting to CONCEPT_QA."""
+    if isinstance(value, str):
+        try:
+            return ItemType(value.strip().upper())
+        except ValueError:
+            pass
+    return ItemType.CONCEPT_QA
