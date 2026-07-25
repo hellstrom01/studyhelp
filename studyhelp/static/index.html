@@ -204,28 +204,49 @@
       </div>
     </div>
 
-    <!-- ── Study session (chat-based, hides sidebar) ── -->
+    <!-- ── Study session (phased chat + notes, hides sidebar) ── -->
     <div id="view-session" class="view">
       <div class="session-header">
         <span class="session-topic" id="session-topic"></span>
-        <div class="timer" id="session-timer">25:00</div>
+        <span class="phase-badge" id="phase-badge">Level check</span>
+        <div class="timer" id="session-timer">--:--</div>
         <button class="btn btn-ghost btn-sm" id="btn-end-session">End Session</button>
       </div>
 
-      <div class="chat-container" id="chat-container">
-        <div class="chat-messages" id="chat-messages"></div>
-      </div>
+      <div id="session-active" class="session-body">
+        <div class="chat-column">
+          <div class="chat-container" id="chat-container">
+            <div class="chat-messages" id="chat-messages"></div>
+          </div>
 
-      <div class="chat-input-area">
-        <textarea class="chat-input" id="chat-input"
-          placeholder="Type your answer..." rows="2"></textarea>
-        <button class="btn btn-primary chat-send" id="btn-send">Send</button>
+          <div id="level-check-gate" class="gate-bar">
+            <span>Warm up with your tutor. When you're ready to focus, start the timer &mdash; the level check isn't counted.</span>
+            <button class="btn btn-primary btn-sm" id="btn-start-focus">Start focus timer</button>
+          </div>
+
+          <div class="chat-input-area">
+            <textarea class="chat-input" id="chat-input"
+              placeholder="Type your answer..." rows="2"></textarea>
+            <button class="btn btn-primary chat-send" id="btn-send">Send</button>
+          </div>
+        </div>
+
+        <aside class="notes-panel">
+          <h3>Your notes</h3>
+          <textarea id="notes-area" placeholder="Capture your own understanding as you go. Saved automatically."></textarea>
+          <span class="notes-status" id="notes-status"></span>
+        </aside>
       </div>
 
       <div id="session-done" class="hidden">
-        <h2>Session Complete</h2>
-        <div class="card" id="session-summary"></div>
-        <button class="btn btn-primary" id="btn-go-home">Back to Study</button>
+        <h2>Winding down</h2>
+        <div class="card">
+          <label for="recap-area">Before you go &mdash; in your own words, what did you learn, and what still feels shaky?</label>
+          <textarea id="recap-area" rows="4" placeholder="Your wind-down recap..."></textarea>
+          <button class="btn btn-primary" id="btn-finish-session">Save &amp; finish</button>
+        </div>
+        <div class="card hidden" id="session-summary"></div>
+        <button class="btn btn-ghost" id="btn-go-home">Back to Study</button>
       </div>
     </div>
 

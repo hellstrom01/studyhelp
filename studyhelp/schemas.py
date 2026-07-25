@@ -150,6 +150,50 @@ class SessionOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
+# ── Study session (phased encoding mode, ADR-0004) ───────────────────────
+
+class StudySessionStart(BaseModel):
+    subject_id: int
+
+
+class StudyMessageOut(BaseModel):
+    role: str
+    content: str
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class StudySessionOut(BaseModel):
+    id: int
+    subject_id: int
+    started_at: datetime
+    ended_at: datetime | None
+    work_seconds: int
+    notes: str
+    wind_down_recap: str
+    messages: list[StudyMessageOut]
+
+    model_config = {"from_attributes": True}
+
+
+class StudyChatRequest(BaseModel):
+    phase: str
+    content: str
+
+
+class StudyChatReply(BaseModel):
+    reply: str
+
+
+class StudyNotesUpdate(BaseModel):
+    notes: str
+
+
+class StudyEndRequest(BaseModel):
+    wind_down_recap: str = ""
+
+
 # ── Calibration insights ─────────────────────────────────────────────────
 
 class CalibrationBin(BaseModel):

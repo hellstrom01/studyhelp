@@ -17,7 +17,7 @@ from .models import (
     Rating,
     Review,
     ReviewSource,
-    StudySession,
+    LegacySession,
     Topic,
     User,
 )
@@ -120,7 +120,7 @@ def build_session_queue(db: Session, user_id: int) -> SessionQueue:
     interleaved = interleave(all_items)
 
     # 4. Create session record
-    session = StudySession(
+    session = LegacySession(
         user_id=user_id,
         new_count=len(new_items),
         review_count=len(due_reviews),
@@ -202,7 +202,7 @@ def submit_review(
     review_item(item, rating, target_retention=user.target_retention, now=now)
 
     # Update session counters
-    session = db.get(StudySession, session_id)
+    session = db.get(LegacySession, session_id)
     if session:
         session.items_seen = (session.items_seen or 0) + 1
 
@@ -210,9 +210,9 @@ def submit_review(
     return review
 
 
-def end_session(db: Session, session_id: int) -> StudySession:
+def end_session(db: Session, session_id: int) -> LegacySession:
     """Close a session and compute calibration error."""
-    session = db.get(StudySession, session_id)
+    session = db.get(LegacySession, session_id)
     if session is None:
         raise ValueError(f"Session {session_id} not found")
 
