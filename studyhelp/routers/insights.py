@@ -17,7 +17,7 @@ def calibration(
     subject_id: int | None = None,
     db: DBSession = Depends(get_db),
 ):
-    """Calibration payload, optionally scoped to a single course (subject)."""
+    """Calibration payload, optionally scoped to a single subject."""
     if db.get(User, user_id) is None:
         raise HTTPException(404, f"User {user_id} not found")
     return compute_calibration(db, user_id, subject_id)

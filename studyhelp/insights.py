@@ -55,7 +55,7 @@ def _empty(trustworthy_count: int, excluded_chat_count: int) -> dict:
 
 
 def compute_calibration(db: Session, user_id: int, subject_id: int | None = None) -> dict:
-    """Return the calibration payload for a user, optionally scoped to a course.
+    """Return the calibration payload for a user, optionally scoped to a subject.
 
     Payload:
         headline    overall mean |predicted - actual|, or None below threshold
