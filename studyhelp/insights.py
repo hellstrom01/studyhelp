@@ -8,7 +8,7 @@ Trust policy (ADR-0001): only reviews whose prediction and outcome provably refe
 to the same item are counted — carried by the `attribution_exact` flag (true for
 CARD reviews and for CHAT reviews resolved to the item actually quizzed). Legacy
 approximate CHAT reviews are excluded (but reported as coverage). We compute fresh
-from the reviews and never read LegacySession.avg_calibration_error (ADR-0002).
+from the reviews and never read any stored per-session aggregate (ADR-0002).
 """
 
 from datetime import timezone

@@ -114,42 +114,6 @@ class ItemOut(BaseModel):
         )
 
 
-# ── Review ───────────────────────────────────────────────────────────────
-
-class ReviewCreate(BaseModel):
-    rating: Rating
-    was_correct: bool
-    response_ms: int | None = None
-
-
-class ReviewOut(BaseModel):
-    id: int
-    item_id: int
-    rating_given: Rating
-    predicted_recall: float | None
-    was_correct: bool
-    response_ms: int | None
-    reviewed_at: datetime
-
-    model_config = {"from_attributes": True}
-
-
-# ── Session ──────────────────────────────────────────────────────────────
-
-class SessionOut(BaseModel):
-    id: int
-    user_id: int
-    started_at: datetime
-    ended_at: datetime | None
-    items_seen: int
-    new_count: int
-    review_count: int
-    pomodoros_completed: int
-    avg_calibration_error: float | None
-
-    model_config = {"from_attributes": True}
-
-
 # ── Study session (phased encoding mode, ADR-0004) ───────────────────────
 
 class StudySessionStart(BaseModel):

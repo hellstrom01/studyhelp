@@ -180,25 +180,6 @@ class Review(Base):
     item: Mapped["Item"] = relationship(back_populates="reviews")
 
 
-# ── Legacy session (card-player flow) ────────────────────────────────────
-
-class LegacySession(Base):
-    """Session record for the legacy card-player flow. The phased study session
-    (ADR-0004) is `StudySession` below; this model is retired by issue #11.
-    """
-    __tablename__ = "sessions"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
-    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
-    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    items_seen: Mapped[int] = mapped_column(Integer, default=0)
-    new_count: Mapped[int] = mapped_column(Integer, default=0)
-    review_count: Mapped[int] = mapped_column(Integer, default=0)
-    pomodoros_completed: Mapped[int] = mapped_column(Integer, default=0)
-    avg_calibration_error: Mapped[float | None] = mapped_column(Float, nullable=True)
-
-
 # ── Study session (phased encoding mode, ADR-0004) ───────────────────────
 
 class StudySession(Base):
