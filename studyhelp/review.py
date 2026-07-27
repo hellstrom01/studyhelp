@@ -4,10 +4,8 @@ Review sessions are the only producer of new Review rows. Due items are
 presented one at a time (interleaved, NEW-item backfilled), the user types an
 answer and gets LLM commentary, then rates their own attempt — that
 self-assessment, never the LLM, drives FSRS. Every row is source CARD and
-exactly attributed by construction.
-
-This lives apart from `session.py` (the legacy card-player flow, retired by
-issue #11) so the two never share a `submit_review`.
+exactly attributed by construction. Review sessions replaced the legacy
+card-player flow, which has been retired (ADR-0004, #5).
 """
 
 from datetime import datetime, timezone

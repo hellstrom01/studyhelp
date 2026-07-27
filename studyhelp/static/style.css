@@ -381,7 +381,7 @@ h3 { font-size: 16px; font-weight: 600; margin-bottom: 12px; }
 .inline-form input { flex: 1; padding: 10px 14px; background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; color: var(--text); font-size: 15px; font-family: inherit; }
 .inline-form input:focus { outline: none; border-color: var(--accent); }
 
-/* ── Topic list in course view ────────────────────── */
+/* ── Topic list in subject view ───────────────────── */
 
 .topic-card {
   background: var(--surface);

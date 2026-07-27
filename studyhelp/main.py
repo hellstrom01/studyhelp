@@ -7,11 +7,9 @@ from fastapi.staticfiles import StaticFiles
 
 from .database import init_db
 from .routers import (
-    chat,
     insights,
     items,
     review,
-    sessions,
     stats,
     study,
     subjects,
@@ -32,11 +30,9 @@ app = FastAPI(title="StudyHelp", version="0.1.0", lifespan=lifespan)
 app.include_router(users.router)
 app.include_router(subjects.router)
 app.include_router(items.router)
-app.include_router(sessions.router)
 app.include_router(study.router)
 app.include_router(review.router)
 app.include_router(stats.router)
-app.include_router(chat.router)
 app.include_router(insights.router)
 
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
